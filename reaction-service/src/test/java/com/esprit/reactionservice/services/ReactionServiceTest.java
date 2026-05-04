@@ -24,7 +24,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-
 @ExtendWith(MockitoExtension.class)
 class ReactionServiceTest {
 
@@ -56,7 +55,6 @@ class ReactionServiceTest {
         u.setLastName("Dupont");
         return u;
     }
-
 
     @Nested
     @DisplayName("toggleReaction() — nouvelle réaction")
@@ -112,7 +110,6 @@ class ReactionServiceTest {
         }
     }
 
-
     @Nested
     @DisplayName("toggleReaction() — suppression (même type)")
     class ToggleReaction_DeleteTests {
@@ -146,7 +143,6 @@ class ReactionServiceTest {
             verify(reactionRepository).delete(existing);
         }
     }
-
 
     @Nested
     @DisplayName("toggleReaction() — changement de type")
@@ -185,37 +181,35 @@ class ReactionServiceTest {
         }
     }
 
-
     @Nested
     @DisplayName("toggleReaction() — validation clients")
     class ToggleReaction_ValidationTests {
 
         @Test
-        @DisplayName("lève RuntimeException si l'utilisateur n'existe pas dans user-service")
-        void throwsRuntimeException_whenUserNotFound() {
+        @DisplayName("lève UserNotFoundException si l'utilisateur n'existe pas dans user-service")
+        void throwsUserNotFoundException_whenUserNotFound() {
             when(userClient.getUserById(99)).thenThrow(new RuntimeException("feign error"));
 
             assertThatThrownBy(() -> reactionService.toggleReaction(10, 99, TypeReaction.LIKE))
-                    .isInstanceOf(RuntimeException.class)
+                    .isInstanceOf(UserNotFoundException.class)
                     .hasMessageContaining("User not found: 99");
 
             verify(reactionRepository, never()).findByPublicationIdAndUserId(any(), any());
         }
 
         @Test
-        @DisplayName("lève RuntimeException si la publication n'existe pas dans publication-service")
-        void throwsRuntimeException_whenPublicationNotFound() {
+        @DisplayName("lève PublicationNotFoundException si la publication n'existe pas dans publication-service")
+        void throwsPublicationNotFoundException_whenPublicationNotFound() {
             when(userClient.getUserById(1)).thenReturn(makeUser(1));
             when(publicationClient.getPublicationById(99)).thenThrow(new RuntimeException("feign error"));
 
             assertThatThrownBy(() -> reactionService.toggleReaction(99, 1, TypeReaction.LIKE))
-                    .isInstanceOf(RuntimeException.class)
+                    .isInstanceOf(PublicationNotFoundException.class)
                     .hasMessageContaining("Publication not found: 99");
 
             verify(reactionRepository, never()).findByPublicationIdAndUserId(any(), any());
         }
     }
-
 
     @Nested
     @DisplayName("getSummary()")
@@ -276,9 +270,9 @@ class ReactionServiceTest {
 
             ReactionSummaryDTO result = reactionService.getSummary(10, 1);
 
-            assertThat(result.getLIKE()).isEqualTo(0);
-            assertThat(result.getDISLIKE()).isEqualTo(0);
-            assertThat(result.getHEART()).isEqualTo(0);
+            assertThat(result.getLIKE()).isZero();
+            assertThat(result.getDISLIKE()).isZero();
+            assertThat(result.getHEART()).isZero();
             assertThat(result.getUserReaction()).isNull();
             assertThat(result.getReactors()).isEmpty();
         }

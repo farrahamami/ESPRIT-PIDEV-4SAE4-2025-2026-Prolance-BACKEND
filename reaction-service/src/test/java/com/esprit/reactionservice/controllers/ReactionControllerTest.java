@@ -17,15 +17,13 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 import java.util.Optional;
 
-import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-
 @WebMvcTest(ReactionController.class)
-@WithMockUser  // Désactive Spring Security pour tous les tests de cette classe
+@WithMockUser
 class ReactionControllerTest {
 
     @Autowired
@@ -130,7 +128,6 @@ class ReactionControllerTest {
                     .andExpect(status().isNoContent());
         }
     }
-
 
     @Nested
     @DisplayName("GET /api/reactions/publication/{publicationId}/summary")

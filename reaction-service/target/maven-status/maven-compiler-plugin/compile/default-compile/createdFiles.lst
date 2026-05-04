@@ -2,6 +2,7 @@ com\esprit\reactionservice\entities\TypeReaction.class
 com\esprit\reactionservice\controllers\ReactionController.class
 com\esprit\reactionservice\repositories\ReactionRepository.class
 com\esprit\reactionservice\dto\ReactionSummaryDTO.class
+com\esprit\reactionservice\services\UserNotFoundException.class
 com\esprit\reactionservice\services\ReactionService.class
 com\esprit\reactionservice\dto\ReactorDTO.class
 com\esprit\reactionservice\dto\UserDTO.class
@@ -9,4 +10,5 @@ com\esprit\reactionservice\clients\UserClient.class
 com\esprit\reactionservice\entities\Reaction.class
 com\esprit\reactionservice\ReactionServiceApplication.class
 com\esprit\reactionservice\clients\PublicationClient.class
+com\esprit\reactionservice\services\PublicationNotFoundException.class
 com\esprit\reactionservice\config\SecurityConfig.class
