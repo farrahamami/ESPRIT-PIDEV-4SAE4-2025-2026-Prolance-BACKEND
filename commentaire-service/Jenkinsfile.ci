@@ -66,28 +66,9 @@ pipeline {
                 }
             }
         }
-        stage('🔒 OWASP Dependency-Check') {
+        stage('OWASP Dependency-Check') {
             steps {
-                dir('commentaire-service') {
-                   sh 'mvn dependency-check:check -B || true'
-                }
-            }
-            post {
-                always {
-                    dependencyCheckPublisher(
-                        pattern: 'commentaire-service/target/dependency-check-report.xml'
-                    )
-                    publishHTML([
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'commentaire-service/target',
-                        reportFiles: 'dependency-check-report.html',
-                        reportName: 'OWASP Dependency-Check Report'
-                    ])
-                    archiveArtifacts artifacts: 'commentaire-service/target/dependency-check-report.*',
-                                     allowEmptyArchive: true
-                }
+                sh 'mvn dependency-check:check'
             }
         }
         stage('🐳 Docker Build & Push') {
