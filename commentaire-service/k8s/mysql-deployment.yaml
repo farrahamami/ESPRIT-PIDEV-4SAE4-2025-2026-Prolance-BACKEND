@@ -1,4 +1,17 @@
 apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-mysql-commentaire
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /data/mysql-commentaire
+---
+apiVersion: v1
 kind: Secret
 metadata:
   name: mysql-secret-commentaire
@@ -16,6 +29,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
+  volumeName: pv-mysql-commentaire
   resources:
     requests:
       storage: 5Gi
@@ -35,10 +49,10 @@ spec:
       labels:
         app: mysql-commentaire
     spec:
-      automountServiceAccountToken: false   # fix: kubernetes:S6865
+      automountServiceAccountToken: false
       containers:
         - name: mysql
-          image: mysql:8.0.36              # fix: kubernetes:S6596 (tag précis au lieu de latest)
+          image: mysql:8.0.36
           env:
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:
@@ -52,7 +66,7 @@ spec:
                   key: mysql-database
           ports:
             - containerPort: 3306
-          resources:                        # fix: kubernetes:S6892 / S6873 / S6864
+          resources:
             requests:
               cpu: "500m"
               memory: "512Mi"

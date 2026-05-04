@@ -7,8 +7,6 @@ spec:
   replicas: 1
 
   # ✅ Rolling Update : nouveau pod créé AVANT de supprimer l'ancien
-  # maxUnavailable: 0 → jamais 0 pod dispo pendant le déploiement
-  # maxSurge: 1       → 1 pod supplémentaire créé le temps de la transition
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -26,8 +24,7 @@ spec:
     spec:
       automountServiceAccountToken: false
 
-      # ✅ initContainer : attend que MySQL soit prêt avant de lancer Spring Boot
-      # Sans ça → Spring Boot crashe car MySQL n'est pas encore accessible
+      # ✅ Attend que MySQL soit prêt avant de lancer Spring Boot
       initContainers:
         - name: wait-for-mysql
           image: busybox:1.36
@@ -44,8 +41,7 @@ spec:
 
       containers:
         - name: commentaire-service
-          # ✅ IMAGE_PLACEHOLDER remplacé par le CD via :
-          # sed -i "s|IMAGE_PLACEHOLDER|yesmine111/commentaire-service:${IMAGE_TAG}|g" deployment.yaml
+          # ✅ IMAGE_PLACEHOLDER remplacé par le CD via sed
           image: IMAGE_PLACEHOLDER
           ports:
             - containerPort: 8083
@@ -74,7 +70,7 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "1"
-          # ✅ Délais augmentés : Spring Boot + MySQL prend plus de 45s au démarrage
+          # ✅ Délais augmentés pour laisser Spring Boot démarrer correctement
           readinessProbe:
             httpGet:
               path: /actuator/health
