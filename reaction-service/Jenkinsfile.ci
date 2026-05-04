@@ -47,7 +47,7 @@ pipeline {
         stage('🧪 Tests') {
             steps {
                 dir('reaction-service') {
-                    sh 'mvn test -B'
+                    sh 'mvn verify -B'
                 }
             }
         }
