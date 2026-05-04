@@ -1,0 +1,21 @@
+replicaCount: 1
+
+image:
+  repository: marahmarah123/event-service
+  tag: "latest"
+  pullPolicy: Always
+
+service:
+  type: NodePort
+  port: 8085
+  nodePort: 30085
+
+namespace: devops
+
+env:
+  datasourceUrl: "jdbc:mysql://event-mysql.devops.svc.cluster.local:3306/pidev_events?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+  datasourceUsername: "root"
+
+secret:
+  name: event-mysql-secret
+  passwordKey: mysql-root-password
