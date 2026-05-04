@@ -1,6 +1,17 @@
 pipeline {
     agent any
 
+    // ✅ CORRECTION 1 : IMAGE_TAG reçu comme paramètre du CI
+    // Avant : lecture de lastSuccessfulBuild → échoue si CI est UNSTABLE
+    // Après : tag injecté directement par le CI via build(..., parameters:[...])
+    parameters {
+        string(
+            name: 'IMAGE_TAG',
+            defaultValue: 'latest',
+            description: 'Tag de l\'image Docker transmis automatiquement par le CI'
+        )
+    }
+
     environment {
         JAVA_HOME        = '/usr/lib/jvm/java-21-openjdk-amd64'
         PATH             = "/usr/lib/jvm/java-21-openjdk-amd64/bin:${env.PATH}"
@@ -12,38 +23,37 @@ pipeline {
     }
 
     options {
-        timeout(time: 20, unit: 'MINUTES')
+        // ✅ CORRECTION 2 : timeout augmenté 20→30 min
+        // car initContainer + Spring Boot + MySQL prend plus de 20 min parfois
+        timeout(time: 30, unit: 'MINUTES')
         timestamps()
         buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
     stages {
         stage('📥 Checkout') {
-               steps {
-                   checkout([$class: 'GitSCM',
-                       branches: [[name: '*/devops/on-integrated6sur6/ads_cicd_k8s']],
-                       extensions: [[$class: 'CloneOption', depth: 1, shallow: true]],
-                       userRemoteConfigs: [[
-                           credentialsId: 'github-credentials',
-                           url: 'https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND'
-                       ]]
-                   ])
-               }
-       }
+            steps {
+                checkout([$class: 'GitSCM',
+                    branches: [[name: '*/devops/on-integrated6sur6/ads_cicd_k8s']],
+                    extensions: [[$class: 'CloneOption', depth: 1, shallow: true]],
+                    userRemoteConfigs: [[
+                        credentialsId: 'github-credentials',
+                        url: 'https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND'
+                    ]]
+                ])
+            }
+        }
 
-        stage('🔖 Récupérer le tag CI') {
-                 steps {
-                     script {
-                         def tagFile = '/var/lib/jenkins/jobs/commentaire-service-ci/builds/lastSuccessfulBuild/archive/last-build.txt'
-                         try {
-                             env.IMAGE_TAG = sh(script: "cat ${tagFile}", returnStdout: true).trim()
-                         } catch (e) {
-                             env.IMAGE_TAG = 'latest'
-                         }
-                         echo "🔖 Tag récupéré : ${env.IMAGE_TAG}"
-                     }
-                 }
-             }
+        // ✅ CORRECTION 1 : tag vient du paramètre, plus de lecture fichier fragile
+        stage('🔖 Vérifier le tag image') {
+            steps {
+                script {
+                    env.IMAGE_TAG = params.IMAGE_TAG?.trim() ?: 'latest'
+                    echo "🔖 Tag utilisé    : ${env.IMAGE_TAG}"
+                    echo "🐳 Image complète : ${IMAGE_NAME}:${env.IMAGE_TAG}"
+                }
+            }
+        }
 
         stage('🚀 Deploy to Kubernetes') {
             steps {
@@ -58,19 +68,40 @@ pipeline {
             }
         }
 
+        // ✅ CORRECTION 3 : timeout augmenté 120s→300s + diagnostic automatique si échec
         stage('✅ Vérifier le déploiement') {
             steps {
-                sh '''
-                    kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=120s
-                    kubectl get pods -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE}
-                '''
+                script {
+                    try {
+                        sh """
+                            kubectl rollout status deployment/${SERVICE_NAME} \
+                                -n ${K8S_NAMESPACE} --timeout=300s
+                            kubectl get pods -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE}
+                        """
+                    } catch (err) {
+                        // Affiche le diagnostic complet avant d'échouer
+                        sh """
+                            echo '--- PODS STATUS ---'
+                            kubectl get pods -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE}
+                            echo '--- DESCRIBE POD ---'
+                            kubectl describe pod -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE} | tail -30
+                            echo '--- LOGS SPRING BOOT ---'
+                            kubectl logs -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE} --tail=50 || true
+                            echo '--- LOGS PRECEDENTS ---'
+                            kubectl logs -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE} --previous --tail=50 || true
+                            echo '--- EVENTS ---'
+                            kubectl get events -n ${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -20
+                        """
+                        error("❌ Déploiement échoué — voir les logs ci-dessus.")
+                    }
+                }
             }
         }
     }
 
     post {
         success {
-            echo "✅ CD OK : ${SERVICE_NAME} déployé sur Kubernetes avec l'image ${IMAGE_NAME}:${IMAGE_TAG}"
+            echo "✅ CD OK : ${SERVICE_NAME} déployé avec l'image ${IMAGE_NAME}:${IMAGE_TAG}"
         }
         failure {
             echo "❌ CD échoué pour ${SERVICE_NAME}."
