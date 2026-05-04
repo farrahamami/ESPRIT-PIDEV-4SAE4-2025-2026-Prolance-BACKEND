@@ -1,7 +1,7 @@
 pipeline {
     agent any
     tools {
-        jdk 'JDK21'
+        jdk 'JDK17'
         maven 'Maven3'
     }
     environment {
@@ -66,7 +66,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('🐳 Docker Build & Push') {
             steps {
                 dir('publication-service') {
