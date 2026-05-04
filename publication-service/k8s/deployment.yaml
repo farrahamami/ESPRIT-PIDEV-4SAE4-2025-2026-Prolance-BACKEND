@@ -13,10 +13,10 @@ spec:
       labels:
         app: publication-service
     spec:
-      automountServiceAccountToken: false   # fix: kubernetes:S6865
+      automountServiceAccountToken: false
       containers:
         - name: publication-service
-          image: yesmine111/publication-service:latest  # fix: kubernetes:S6596
+          image: IMAGE_PLACEHOLDER
           ports:
             - containerPort: 8082
           env:
@@ -37,7 +37,11 @@ spec:
               value: "http://eureka-service:8761/eureka/"
             - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
               value: "true"
-          resources:                        # fix: kubernetes:S6892 / S6873 / S6864 / S6897
+            # ===== JAEGER =====
+            - name: JAEGER_HOST
+              value: "jaeger-service"
+            # ==================
+          resources:
             requests:
               cpu: "500m"
               memory: "512Mi"

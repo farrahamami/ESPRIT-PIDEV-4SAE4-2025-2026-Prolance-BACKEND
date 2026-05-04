@@ -53,6 +53,25 @@ pipeline {
             }
         }
 
+        // ===== STAGE JAEGER =====
+        stage('🔭 Déployer Jaeger') {
+            steps {
+                dir('publication-service/k8s') {
+                    sh '''
+                        echo "🔭 Déploiement de Jaeger dans Kubernetes..."
+                        kubectl apply -f jaeger-deployment.yaml --validate=false -n ${K8S_NAMESPACE}
+
+                        echo "⏳ Attente que Jaeger soit prêt..."
+                        kubectl rollout status deployment/jaeger -n ${K8S_NAMESPACE} --timeout=120s
+
+                        echo "✅ Jaeger déployé."
+                        kubectl get pods -l app=jaeger -n ${K8S_NAMESPACE}
+                    '''
+                }
+            }
+        }
+        // ========================
+
         stage('🚀 Deploy to Kubernetes') {
             steps {
                 dir('publication-service/k8s') {
@@ -62,7 +81,6 @@ pipeline {
                         # Appliquer MySQL en premier
                         kubectl apply -f mysql-deployment.yaml --validate=false -n ${K8S_NAMESPACE}
 
-                        # Attendre que MySQL soit prêt avant de déployer le service
                         echo "⏳ Attente de MySQL..."
                         kubectl rollout status deployment/mysql-publication -n ${K8S_NAMESPACE} --timeout=180s
 
@@ -77,23 +95,49 @@ pipeline {
         stage('✅ Vérifier le déploiement') {
             steps {
                 sh '''
-                    # FIX: Augmenter le timeout à 300s (Spring Boot + MySQL prennent du temps)
                     kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=300s
                     kubectl get pods -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE}
                     kubectl get services -n ${K8S_NAMESPACE}
                 '''
             }
         }
+
+        // ===== VÉRIFICATION TRACES JAEGER =====
+        stage('📡 Vérifier les traces Jaeger') {
+            steps {
+                sh '''
+                    echo "📡 Vérification des traces dans Jaeger..."
+                    sleep 15
+
+                    # Récupérer l'IP du node
+                    NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[0].address}")
+                    JAEGER_URL="http://${NODE_IP}:30686"
+
+                    echo "🔗 Jaeger UI : ${JAEGER_URL}"
+
+                    # Vérifier que l'API Jaeger répond
+                    curl -sf "${JAEGER_URL}/api/services" > /dev/null \
+                        && echo "✅ Jaeger API accessible" \
+                        || echo "⚠️  Jaeger API pas encore prête (normal au premier démarrage)"
+
+                    # Afficher les services tracés si disponibles
+                    curl -sf "${JAEGER_URL}/api/services" 2>/dev/null \
+                        | python3 -c "import sys,json; d=json.load(sys.stdin); print('Services tracés:', d.get('data', []))" \
+                        || true
+                '''
+            }
+        }
+        // =======================================
     }
 
     post {
         success {
-            echo "✅ CD OK : ${SERVICE_NAME} déployé sur Kubernetes avec l'image ${IMAGE_NAME}:${IMAGE_TAG}"
+            echo "✅ CD OK : ${SERVICE_NAME} déployé avec Jaeger actif. UI : http://NODE_IP:30686"
         }
         failure {
             sh '''
-                echo "❌ Diagnostic des pods en échec :"
-                kubectl get pods -n ${K8S_NAMESPACE} -l app=publication-service 2>/dev/null || true
+                echo "❌ Diagnostic :"
+                kubectl get pods -n ${K8S_NAMESPACE} 2>/dev/null || true
                 kubectl describe pods -n ${K8S_NAMESPACE} -l app=publication-service 2>/dev/null | tail -40 || true
                 kubectl logs -n ${K8S_NAMESPACE} -l app=publication-service --tail=50 2>/dev/null || true
             '''
