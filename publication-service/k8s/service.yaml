@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: spring-service-publication
+  namespace: devops
+spec:
+  selector:
+    app: publication-service
+  ports:
+    - protocol: TCP
+      port: 8082
+      targetPort: 8082
+      nodePort: 32082
+  type: NodePort

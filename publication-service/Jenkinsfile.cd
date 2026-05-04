@@ -2,148 +2,67 @@ pipeline {
     agent any
 
     environment {
+        JAVA_HOME        = '/usr/lib/jvm/java-21-openjdk-amd64'
+        PATH             = "/usr/lib/jvm/java-21-openjdk-amd64/bin:${env.PATH}"
         SERVICE_NAME     = 'publication-service'
-        DOCKER_NAMESPACE = 'farahchbeb'
+        DOCKER_NAMESPACE = 'yesmine111'
         IMAGE_NAME       = "${DOCKER_NAMESPACE}/${SERVICE_NAME}"
         APP_PORT         = '8082'
-        CONTAINER_NAME   = 'publication-service-live'
-        GRAYLOG_HOST     = 'localhost'
-        JAEGER_HOST      = 'host-gateway'
-        JAEGER_CONTAINER = 'jaeger'
+        K8S_NAMESPACE    = 'devops'
     }
 
     options {
-        timeout(time: 10, unit: 'MINUTES')
+        timeout(time: 20, unit: 'MINUTES')
         timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
     stages {
-        stage('📌 Récupérer le tag depuis le CI') {
-            steps {
-                copyArtifacts(
-                    projectName: 'publication-service-ci',
-                    filter: 'last-build.txt',
-                    selector: lastSuccessful()
-                )
-                script {
-                    env.IMAGE_TAG = readFile('last-build.txt').trim()
-                    echo "==> Déploiement de ${IMAGE_NAME}:${env.IMAGE_TAG}"
-                }
-            }
-        }
+        stage('📥 Checkout') {
+               steps {
+                   checkout([$class: 'GitSCM',
+                       branches: [[name: '*/devops/on-integrated6sur6/ads_cicd_k8s']],
+                       extensions: [[$class: 'CloneOption', depth: 1, shallow: true]],
+                       userRemoteConfigs: [[
+                           credentialsId: 'github-credentials',
+                           url: 'https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND'
+                       ]]
+                   ])
+               }
+       }
 
-        stage('🔐 Login DockerHub') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
-                }
-            }
-        }
+        stage('🔖 Récupérer le tag CI') {
+                 steps {
+                     script {
+                         def tagFile = '/var/lib/jenkins/jobs/publication-service-ci/builds/lastSuccessfulBuild/archive/last-build.txt'
+                         try {
+                             env.IMAGE_TAG = sh(script: "cat ${tagFile}", returnStdout: true).trim()
+                         } catch (e) {
+                             env.IMAGE_TAG = 'latest'
+                         }
+                         echo "🔖 Tag récupéré : ${env.IMAGE_TAG}"
+                     }
+                 }
+             }
 
-        stage('⬇️ Pull nouvelle image') {
+        stage('🚀 Deploy to Kubernetes') {
             steps {
-                sh 'docker pull ${IMAGE_NAME}:${IMAGE_TAG}'
-            }
-        }
-
-        stage('🛑 Stopper ancien container') {
-            steps {
-                sh '''
-                    docker stop ${CONTAINER_NAME} 2>/dev/null || true
-                    docker rm ${CONTAINER_NAME} 2>/dev/null || true
-                '''
-            }
-        }
-
-        stage('🔍 Démarrer Jaeger si absent') {
-            steps {
-                script {
-                    def running = sh(
-                        script: "docker inspect -f '{{.State.Running}}' ${JAEGER_CONTAINER} 2>/dev/null || echo 'absent'",
-                        returnStdout: true
-                    ).trim()
-
-                    if (running != 'true') {
-                        echo "⚙️ Jaeger absent — démarrage du container..."
-                        sh '''
-                            docker run -d \
-                              --name ${JAEGER_CONTAINER} \
-                              --restart unless-stopped \
-                              -p 16686:16686 \
-                              -p 4317:4317 \
-                              -p 4318:4318 \
-                              jaegertracing/all-in-one:1.55
-                            echo "⏳ Attente du démarrage Jaeger..."
-                            sleep 8
-                        '''
-                    } else {
-                        echo "✅ Jaeger déjà en cours d'exécution — aucune action nécessaire."
-                    }
-                }
-            }
-        }
-
-        stage('🚀 Démarrer nouveau container') {
-            steps {
-                sh '''
-                    docker run -d \
-                      --name ${CONTAINER_NAME} \
-                      -p ${APP_PORT}:${APP_PORT} \
-                      --restart unless-stopped \
-                      --add-host=host-gateway:host-gateway \
-                      -e GRAYLOG_HOST=${GRAYLOG_HOST} \
-                      -e JAEGER_HOST=${JAEGER_HOST} \
-                      ${IMAGE_NAME}:${IMAGE_TAG}
-                '''
-            }
-        }
-
-        stage('📡 Vérifier Jaeger reçoit les traces') {
-            steps {
-                script {
-                    sh 'sleep 15'
+                dir('publication-service/k8s') {
                     sh '''
-                        curl -s http://localhost:16686/api/services \
-                          | grep -q "publication-service" \
-                          && echo "✅ Jaeger : publication-service détecté" \
-                          || echo "⚠️ Jaeger : service pas encore visible (normal au 1er boot)"
+                        sed -i "s|IMAGE_PLACEHOLDER|${IMAGE_NAME}:${IMAGE_TAG}|g" deployment.yaml
+                        kubectl apply -f mysql-deployment.yaml --validate=false
+                        kubectl apply -f deployment.yaml --validate=false
+                        kubectl apply -f service.yaml --validate=false
                     '''
                 }
             }
         }
 
-        stage('📊 Vérifier Graylog reçoit les logs') {
-            steps {
-                script {
-                    sh 'sleep 10'
-                    sh '''
-                        echo "=== Derniers logs du container ==="
-                        docker logs --tail 30 ${CONTAINER_NAME}
-
-                        echo "=== Vérification des erreurs ==="
-                        docker logs ${CONTAINER_NAME} 2>&1 | grep -i "ERROR\\|Exception\\|WARN" \
-                          && echo "⚠️ Des erreurs ont été détectées dans les logs" \
-                          || echo "✅ Aucune erreur critique dans les logs"
-
-                        echo "=== Confirmation démarrage Spring Boot ==="
-                        docker logs ${CONTAINER_NAME} 2>&1 | grep -i "Started\\|Running\\|listening\\|Tomcat started" \
-                          && echo "✅ publication-service démarré correctement" \
-                          || echo "⚠️ Démarrage Spring Boot non confirmé"
-                    '''
-                }
-            }
-        }
-
-        stage('✅ Vérifier que le container tourne') {
+        stage('✅ Vérifier le déploiement') {
             steps {
                 sh '''
-                    sleep 5
-                    docker ps | grep ${CONTAINER_NAME}
-                    docker logs --tail 20 ${CONTAINER_NAME}
+                    kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=120s
+                    kubectl get pods -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE}
                 '''
             }
         }
@@ -151,13 +70,12 @@ pipeline {
 
     post {
         success {
-            echo "🎉 CD réussi : ${IMAGE_NAME}:${env.IMAGE_TAG} déployé sur le port ${APP_PORT}"
+            echo "✅ CD OK : ${SERVICE_NAME} déployé sur Kubernetes avec l'image ${IMAGE_NAME}:${IMAGE_TAG}"
         }
         failure {
-            echo "💥 CD échoué"
+            echo "❌ CD échoué pour ${SERVICE_NAME}."
         }
         always {
-            sh 'docker logout || true'
             cleanWs()
         }
     }

@@ -13,9 +13,10 @@ spec:
       labels:
         app: publication-service
     spec:
+      automountServiceAccountToken: false   # fix: kubernetes:S6865
       containers:
         - name: publication-service
-          image: farahchbeb/publication-service:latest
+          image: yesmine111/publication-service:latest  # fix: kubernetes:S6596
           ports:
             - containerPort: 8082
           env:
@@ -36,6 +37,13 @@ spec:
               value: "http://eureka-service:8761/eureka/"
             - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
               value: "true"
+          resources:                        # fix: kubernetes:S6892 / S6873 / S6864 / S6897
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
           readinessProbe:
             httpGet:
               path: /actuator/health
@@ -48,18 +56,3 @@ spec:
               port: 8082
             initialDelaySeconds: 60
             periodSeconds: 20
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: spring-service
-  namespace: devops
-spec:
-  selector:
-    app: publication-service
-  ports:
-    - protocol: TCP
-      port: 8082
-      targetPort: 8082
-      nodePort: 32082
-  type: NodePort
