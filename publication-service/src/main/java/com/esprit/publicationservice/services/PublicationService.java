@@ -21,7 +21,6 @@ import java.util.*;
 @RequiredArgsConstructor
 public class PublicationService {
 
-    // FIX: Replace System.err by a logger (SonarQube L247)
     private static final Logger logger = LoggerFactory.getLogger(PublicationService.class);
 
     private final PublicationRepository publicationRepository;
@@ -29,16 +28,92 @@ public class PublicationService {
     private static final String UPLOAD_DIR = "uploads/publications/";
     private static final int SIGNALEMENT_THRESHOLD = 3;
     private static final long BLOCK_THRESHOLD = 3;
-    // FIX: Define constant instead of duplicating literal (SonarQube L189)
     private static final String PUBLICATION_NOT_FOUND = "Publication not found";
 
-    // FIX: Custom exceptions instead of generic RuntimeException (SonarQube L158, L190, L219)
+    // Custom exceptions
     public static class PublicationNotFoundException extends RuntimeException {
         public PublicationNotFoundException(String message) { super(message); }
     }
     public static class UserNotFoundException extends RuntimeException {
         public UserNotFoundException(String message) { super(message); }
     }
+
+    // ========== REQUEST DTO CLASSES ==========
+
+    public static class CreatePublicationRequest {
+        private String titre;
+        private String contenue;
+        private TypePublication type;
+        private Integer userId;
+        private List<MultipartFile> images;
+        private List<MultipartFile> pdfs;
+        private String titleColor;
+        private String contentColor;
+        private String titleFontSize;
+
+        // Getters and Setters
+        public String getTitre() { return titre; }
+        public void setTitre(String titre) { this.titre = titre; }
+        public String getContenue() { return contenue; }
+        public void setContenue(String contenue) { this.contenue = contenue; }
+        public TypePublication getType() { return type; }
+        public void setType(TypePublication type) { this.type = type; }
+        public Integer getUserId() { return userId; }
+        public void setUserId(Integer userId) { this.userId = userId; }
+        public List<MultipartFile> getImages() { return images; }
+        public void setImages(List<MultipartFile> images) { this.images = images; }
+        public List<MultipartFile> getPdfs() { return pdfs; }
+        public void setPdfs(List<MultipartFile> pdfs) { this.pdfs = pdfs; }
+        public String getTitleColor() { return titleColor; }
+        public void setTitleColor(String titleColor) { this.titleColor = titleColor; }
+        public String getContentColor() { return contentColor; }
+        public void setContentColor(String contentColor) { this.contentColor = contentColor; }
+        public String getTitleFontSize() { return titleFontSize; }
+        public void setTitleFontSize(String titleFontSize) { this.titleFontSize = titleFontSize; }
+    }
+
+    public static class UpdatePublicationRequest {
+        private Integer id;
+        private String titre;
+        private String contenue;
+        private TypePublication type;
+        private Integer userId;
+        private List<MultipartFile> newImages;
+        private List<String> imagesToKeep;
+        private List<MultipartFile> newPdfs;
+        private List<String> pdfsToKeep;
+        private String titleColor;
+        private String contentColor;
+        private String titleFontSize;
+
+        // Getters and Setters
+        public Integer getId() { return id; }
+        public void setId(Integer id) { this.id = id; }
+        public String getTitre() { return titre; }
+        public void setTitre(String titre) { this.titre = titre; }
+        public String getContenue() { return contenue; }
+        public void setContenue(String contenue) { this.contenue = contenue; }
+        public TypePublication getType() { return type; }
+        public void setType(TypePublication type) { this.type = type; }
+        public Integer getUserId() { return userId; }
+        public void setUserId(Integer userId) { this.userId = userId; }
+        public List<MultipartFile> getNewImages() { return newImages; }
+        public void setNewImages(List<MultipartFile> newImages) { this.newImages = newImages; }
+        public List<String> getImagesToKeep() { return imagesToKeep; }
+        public void setImagesToKeep(List<String> imagesToKeep) { this.imagesToKeep = imagesToKeep; }
+        public List<MultipartFile> getNewPdfs() { return newPdfs; }
+        public void setNewPdfs(List<MultipartFile> newPdfs) { this.newPdfs = newPdfs; }
+        public List<String> getPdfsToKeep() { return pdfsToKeep; }
+        public void setPdfsToKeep(List<String> pdfsToKeep) { this.pdfsToKeep = pdfsToKeep; }
+        public String getTitleColor() { return titleColor; }
+        public void setTitleColor(String titleColor) { this.titleColor = titleColor; }
+        public String getContentColor() { return contentColor; }
+        public void setContentColor(String contentColor) { this.contentColor = contentColor; }
+        public String getTitleFontSize() { return titleFontSize; }
+        public void setTitleFontSize(String titleFontSize) { this.titleFontSize = titleFontSize; }
+    }
+
+    // ========== PUBLIC METHODS ==========
 
     public List<Publication> getAllPublications() {
         List<Publication> list = publicationRepository.findByStatutOrderByCreateAtDesc(StatutPublication.ACTIVE);
@@ -88,7 +163,6 @@ public class PublicationService {
     public void reactiverCompteUser(Integer userId) {
         List<Publication> allUserPubs = publicationRepository.findByUserId(userId);
 
-        // FIX: Stream.toList() instead of Collectors.toList() (SonarQube L83)
         List<Publication> archivedPubs = allUserPubs.stream()
                 .filter(p -> p.getStatut() == StatutPublication.ARCHIVED)
                 .toList();
@@ -99,7 +173,6 @@ public class PublicationService {
             publicationRepository.delete(p);
         }
 
-        // FIX: Stream.toList() instead of Collectors.toList() (SonarQube L93)
         List<Publication> activePubs = allUserPubs.stream()
                 .filter(p -> p.getStatut() == StatutPublication.ACTIVE)
                 .toList();
@@ -123,15 +196,12 @@ public class PublicationService {
             Integer uid = entry.getKey();
             long count  = entry.getValue();
             String name = "";
-            // FIX: Declare "lastName" on a separate line (SonarQube L114)
             String lastName = "";
             try {
                 UserDTO u = userClient.getUserById(uid);
                 name     = u.getName()     != null ? u.getName()     : "";
                 lastName = u.getLastName() != null ? u.getLastName() : "";
             } catch (Exception e) {
-                // FIX: Fill empty catch block with comment (SonarQube L119)
-                // User service unavailable; name/lastName remain empty strings intentionally
                 logger.debug("Could not fetch user {}: {}", uid, e.getMessage());
             }
             result.add(new UserBlockDTO(uid, name, lastName, count));
@@ -165,21 +235,58 @@ public class PublicationService {
         return saved;
     }
 
-    // FIX: Reduced cognitive complexity by extracting helper methods (SonarQube L152)
-    public Publication createPublication(String titre, String contenue, TypePublication type,
-                                         Integer userId, List<MultipartFile> images,
-                                         List<MultipartFile> pdfs, String titleColor,
-                                         String contentColor, String titleFontSize) throws IOException {
-        validateCreateInput(titre, contenue, userId, type, images, pdfs);
+    // FIXED: Now uses parameter object (1 parameter instead of 9)
+    public Publication createPublication(CreatePublicationRequest request) throws IOException {
+        validateCreateInput(request.getTitre(), request.getContenue(), request.getUserId(),
+                request.getType(), request.getImages(), request.getPdfs());
 
-        Publication p = buildPublication(titre, contenue, type, userId, titleColor, contentColor, titleFontSize);
-        p.setImages(saveFiles(images, false));
-        p.setPdfs(saveFiles(pdfs, true));
+        Publication p = buildPublication(request.getTitre(), request.getContenue(), request.getType(),
+                request.getUserId(), request.getTitleColor(),
+                request.getContentColor(), request.getTitleFontSize());
+        p.setImages(saveFiles(request.getImages(), false));
+        p.setPdfs(saveFiles(request.getPdfs(), true));
 
         Publication saved = publicationRepository.save(p);
         enrichWithUser(saved);
         return saved;
     }
+
+    // FIXED: Now uses parameter object (1 parameter instead of 12)
+    public Publication updatePublication(UpdatePublicationRequest request) throws IOException {
+        Publication p = publicationRepository.findById(request.getId())
+                .orElseThrow(() -> new PublicationNotFoundException(PUBLICATION_NOT_FOUND));
+
+        if (!p.getUserId().equals(request.getUserId()))
+            throw new UserNotFoundException("Not authorized");
+
+        applyTextFields(p, request.getTitre(), request.getContenue(), request.getType(),
+                request.getTitleColor(), request.getContentColor(), request.getTitleFontSize());
+        p.setImages(updateFiles(p.getImages(), request.getImagesToKeep(), request.getNewImages(), false));
+        p.setPdfs(updateFiles(p.getPdfs(), request.getPdfsToKeep(), request.getNewPdfs(), true));
+
+        Publication saved = publicationRepository.save(p);
+        enrichWithUser(saved);
+        return saved;
+    }
+
+    public void deletePublication(Integer id, Integer userId) {
+        Publication p = publicationRepository.findById(id)
+                .orElseThrow(() -> new PublicationNotFoundException(PUBLICATION_NOT_FOUND));
+        if (!p.getUserId().equals(userId)) throw new UserNotFoundException("Not authorized");
+        p.getImages().forEach(this::deleteFile);
+        p.getPdfs().forEach(this::deleteFile);
+        publicationRepository.delete(p);
+    }
+
+    public void adminDeletePublication(Integer id) {
+        Publication p = publicationRepository.findById(id)
+                .orElseThrow(() -> new PublicationNotFoundException(PUBLICATION_NOT_FOUND));
+        p.getImages().forEach(this::deleteFile);
+        p.getPdfs().forEach(this::deleteFile);
+        publicationRepository.delete(p);
+    }
+
+    // ========== PRIVATE HELPER METHODS ==========
 
     private void validateCreateInput(String titre, String contenue, Integer userId,
                                      TypePublication type, List<MultipartFile> images, List<MultipartFile> pdfs) {
@@ -188,7 +295,6 @@ public class PublicationService {
         try {
             userClient.getUserById(userId);
         } catch (Exception e) {
-            // FIX: use custom exception (SonarQube L158)
             throw new UserNotFoundException("User not found: " + userId);
         }
         if (isUserBlocked(userId)) {
@@ -215,36 +321,6 @@ public class PublicationService {
         return p;
     }
 
-    private List<String> saveFiles(List<MultipartFile> files, boolean isPdf) throws IOException {
-        List<String> names = new ArrayList<>();
-        if (files != null) {
-            for (MultipartFile f : files) {
-                if (!f.isEmpty()) names.add(saveFile(f, isPdf));
-            }
-        }
-        return names;
-    }
-
-    // FIX: Reduced cognitive complexity + extracted helpers (SonarQube L185)
-    public Publication updatePublication(Integer id, String titre, String contenue, TypePublication type,
-                                         Integer userId, List<MultipartFile> newImages, List<String> imagesToKeep,
-                                         List<MultipartFile> newPdfs, List<String> pdfsToKeep,
-                                         String titleColor, String contentColor, String titleFontSize) throws IOException {
-        Publication p = publicationRepository.findById(id)
-                .orElseThrow(() -> new PublicationNotFoundException(PUBLICATION_NOT_FOUND));
-
-        // FIX: use custom exception (SonarQube L190)
-        if (!p.getUserId().equals(userId)) throw new UserNotFoundException("Not authorized");
-
-        applyTextFields(p, titre, contenue, type, titleColor, contentColor, titleFontSize);
-        p.setImages(updateFiles(p.getImages(), imagesToKeep, newImages, false));
-        p.setPdfs(updateFiles(p.getPdfs(), pdfsToKeep, newPdfs, true));
-
-        Publication saved = publicationRepository.save(p);
-        enrichWithUser(saved);
-        return saved;
-    }
-
     private void applyTextFields(Publication p, String titre, String contenue, TypePublication type,
                                  String titleColor, String contentColor, String titleFontSize) {
         if (titre    != null && !titre.trim().isEmpty())    p.setTitre(titre);
@@ -253,6 +329,16 @@ public class PublicationService {
         if (titleColor   != null) p.setTitleColor(titleColor);
         if (contentColor != null) p.setContentColor(contentColor);
         if (titleFontSize != null) p.setTitleFontSize(titleFontSize);
+    }
+
+    private List<String> saveFiles(List<MultipartFile> files, boolean isPdf) throws IOException {
+        List<String> names = new ArrayList<>();
+        if (files != null) {
+            for (MultipartFile f : files) {
+                if (!f.isEmpty()) names.add(saveFile(f, isPdf));
+            }
+        }
+        return names;
     }
 
     private List<String> updateFiles(List<String> current, List<String> toKeep,
@@ -270,29 +356,10 @@ public class PublicationService {
         return updated;
     }
 
-    public void deletePublication(Integer id, Integer userId) {
-        Publication p = publicationRepository.findById(id)
-                .orElseThrow(() -> new PublicationNotFoundException(PUBLICATION_NOT_FOUND));
-        if (!p.getUserId().equals(userId)) throw new UserNotFoundException("Not authorized");
-        p.getImages().forEach(this::deleteFile);
-        p.getPdfs().forEach(this::deleteFile);
-        publicationRepository.delete(p);
-    }
-
-    public void adminDeletePublication(Integer id) {
-        Publication p = publicationRepository.findById(id)
-                .orElseThrow(() -> new PublicationNotFoundException(PUBLICATION_NOT_FOUND));
-        p.getImages().forEach(this::deleteFile);
-        p.getPdfs().forEach(this::deleteFile);
-        publicationRepository.delete(p);
-    }
-
     private void enrichWithUser(Publication p) {
         try {
             p.setUser(userClient.getUserById(p.getUserId()));
         } catch (Exception e) {
-            // FIX: Fill empty catch block with comment (SonarQube L232)
-            // User service may be temporarily unavailable; publication is returned without user data
             logger.debug("Could not enrich publication {} with user data: {}", p.getId(), e.getMessage());
         }
     }
@@ -312,7 +379,6 @@ public class PublicationService {
         try {
             Files.deleteIfExists(Paths.get(UPLOAD_DIR + name));
         } catch (IOException e) {
-            // FIX: use logger instead of System.err (SonarQube L247)
             logger.warn("Delete error for file {}: {}", name, e.getMessage());
         }
     }
