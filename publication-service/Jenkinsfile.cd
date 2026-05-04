@@ -53,7 +53,6 @@ pipeline {
             }
         }
 
-        // ===== STAGE JAEGER =====
         stage('🔭 Déployer Jaeger') {
             steps {
                 dir('publication-service/k8s') {
@@ -70,7 +69,6 @@ pipeline {
                 }
             }
         }
-        // ========================
 
         stage('🚀 Deploy to Kubernetes') {
             steps {
@@ -78,11 +76,47 @@ pipeline {
                     sh '''
                         sed -i "s|IMAGE_PLACEHOLDER|${IMAGE_NAME}:${IMAGE_TAG}|g" deployment.yaml
 
-                        # Appliquer MySQL en premier
+                        # ── FIX: vérifier que le PVC est Bound avant d'appliquer MySQL ──
                         kubectl apply -f mysql-deployment.yaml --validate=false -n ${K8S_NAMESPACE}
 
-                        echo "⏳ Attente de MySQL..."
-                        kubectl rollout status deployment/mysql-publication -n ${K8S_NAMESPACE} --timeout=180s
+                        echo "⏳ Attente que le PVC MySQL soit Bound..."
+                        for i in $(seq 1 30); do
+                            STATUS=$(kubectl get pvc mysql-pvc-publication -n ${K8S_NAMESPACE} -o jsonpath="{.status.phase}" 2>/dev/null)
+                            echo "  PVC status: ${STATUS}"
+                            if [ "${STATUS}" = "Bound" ]; then
+                                echo "✅ PVC Bound."
+                                break
+                            fi
+                            if [ "$i" = "30" ]; then
+                                echo "❌ PVC toujours non Bound après 150s. Diagnostic:"
+                                kubectl describe pvc mysql-pvc-publication -n ${K8S_NAMESPACE}
+                                kubectl get pv
+                                exit 1
+                            fi
+                            sleep 5
+                        done
+
+                        echo "⏳ Attente que MySQL soit Running..."
+                        kubectl rollout status deployment/mysql-publication -n ${K8S_NAMESPACE} --timeout=240s
+
+                        # ── FIX: attendre que le service DNS mysql-service-publication soit résolvable ──
+                        echo "⏳ Vérification DNS du service MySQL..."
+                        for i in $(seq 1 20); do
+                            MYSQL_IP=$(kubectl get endpoints mysql-service-publication -n ${K8S_NAMESPACE} \
+                                -o jsonpath="{.subsets[0].addresses[0].ip}" 2>/dev/null)
+                            if [ -n "${MYSQL_IP}" ]; then
+                                echo "✅ MySQL endpoint disponible: ${MYSQL_IP}"
+                                break
+                            fi
+                            echo "  En attente de l'endpoint MySQL... ($i/20)"
+                            if [ "$i" = "20" ]; then
+                                echo "❌ Endpoint MySQL jamais prêt. Diagnostic:"
+                                kubectl describe deployment mysql-publication -n ${K8S_NAMESPACE}
+                                kubectl get pods -l app=mysql-publication -n ${K8S_NAMESPACE}
+                                exit 1
+                            fi
+                            sleep 5
+                        done
 
                         # Déployer l'application et le service
                         kubectl apply -f deployment.yaml --validate=false -n ${K8S_NAMESPACE}
@@ -102,32 +136,27 @@ pipeline {
             }
         }
 
-        // ===== VÉRIFICATION TRACES JAEGER =====
         stage('📡 Vérifier les traces Jaeger') {
             steps {
                 sh '''
                     echo "📡 Vérification des traces dans Jaeger..."
                     sleep 15
 
-                    # Récupérer l'IP du node
                     NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[0].address}")
                     JAEGER_URL="http://${NODE_IP}:30686"
 
                     echo "🔗 Jaeger UI : ${JAEGER_URL}"
 
-                    # Vérifier que l'API Jaeger répond
                     curl -sf "${JAEGER_URL}/api/services" > /dev/null \
                         && echo "✅ Jaeger API accessible" \
                         || echo "⚠️  Jaeger API pas encore prête (normal au premier démarrage)"
 
-                    # Afficher les services tracés si disponibles
                     curl -sf "${JAEGER_URL}/api/services" 2>/dev/null \
                         | python3 -c "import sys,json; d=json.load(sys.stdin); print('Services tracés:', d.get('data', []))" \
                         || true
                 '''
             }
         }
-        // =======================================
     }
 
     post {
@@ -137,6 +166,8 @@ pipeline {
         failure {
             sh '''
                 echo "❌ Diagnostic :"
+                kubectl get pvc -n ${K8S_NAMESPACE} 2>/dev/null || true
+                kubectl get pv 2>/dev/null || true
                 kubectl get pods -n ${K8S_NAMESPACE} 2>/dev/null || true
                 kubectl describe pods -n ${K8S_NAMESPACE} -l app=publication-service 2>/dev/null | tail -40 || true
                 kubectl logs -n ${K8S_NAMESPACE} -l app=publication-service --tail=50 2>/dev/null || true

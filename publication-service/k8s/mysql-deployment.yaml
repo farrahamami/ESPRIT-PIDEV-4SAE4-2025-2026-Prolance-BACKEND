@@ -8,6 +8,23 @@ data:
   mysql-root-password: cm9vdA==                 # "root" encodé en base64
   mysql-database: cGlkZXZfcHVibGljYXRpb24=     # "pidev_publication" encodé en base64
 ---
+# FIX: PersistentVolume statique en hostPath (si pas de provisioner dynamique sur le cluster)
+# Si ton cluster a un StorageClass dynamique (ex: minikube → "standard", k3s → "local-path"),
+# supprime ce bloc PV et décommente storageClassName dans le PVC ci-dessous.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv-publication
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /mnt/data/mysql-publication   # le dossier sera créé automatiquement sur le node
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -16,6 +33,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
+  storageClassName: manual   # FIX: doit matcher le PV ci-dessus (ou votre StorageClass dynamique)
   resources:
     requests:
       storage: 5Gi
@@ -35,10 +53,18 @@ spec:
       labels:
         app: mysql-publication
     spec:
-      automountServiceAccountToken: false   # fix: kubernetes:S6865
+      automountServiceAccountToken: false
+      # FIX: attendre que le PVC soit bound avant de démarrer
+      initContainers:
+        - name: wait-for-pvc
+          image: busybox:1.36
+          command: ['sh', '-c', 'until [ -d /var/lib/mysql ]; do echo waiting for volume; sleep 2; done']
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
       containers:
         - name: mysql
-          image: mysql:8.0.36              # fix: kubernetes:S6596 (tag précis au lieu de latest)
+          image: mysql:8.0.36
           env:
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:
@@ -52,13 +78,31 @@ spec:
                   key: mysql-database
           ports:
             - containerPort: 3306
-          resources:                        # fix: kubernetes:S6892 / S6873 / S6864
+          resources:
             requests:
               cpu: "500m"
               memory: "512Mi"
             limits:
               memory: "1Gi"
               cpu: "1"
+          # FIX: readinessProbe pour que le service ne soit exposé que quand MySQL est prêt
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "mysqladmin ping -u root -p${MYSQL_ROOT_PASSWORD} --silent"
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 10
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "mysqladmin ping -u root -p${MYSQL_ROOT_PASSWORD} --silent"
+            initialDelaySeconds: 40
+            periodSeconds: 20
           volumeMounts:
             - name: mysql-data
               mountPath: /var/lib/mysql
