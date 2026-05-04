@@ -68,33 +68,12 @@ pipeline {
             }
         }
 
-        // ✅ CORRECTION 3 : timeout augmenté 120s→300s + diagnostic automatique si échec
         stage('✅ Vérifier le déploiement') {
             steps {
-                script {
-                    try {
-                        sh """
-                            kubectl rollout status deployment/${SERVICE_NAME} \
-                                -n ${K8S_NAMESPACE} --timeout=300s
-                            kubectl get pods -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE}
-                        """
-                    } catch (err) {
-                        // Affiche le diagnostic complet avant d'échouer
-                        sh """
-                            echo '--- PODS STATUS ---'
-                            kubectl get pods -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE}
-                            echo '--- DESCRIBE POD ---'
-                            kubectl describe pod -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE} | tail -30
-                            echo '--- LOGS SPRING BOOT ---'
-                            kubectl logs -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE} --tail=50 || true
-                            echo '--- LOGS PRECEDENTS ---'
-                            kubectl logs -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE} --previous --tail=50 || true
-                            echo '--- EVENTS ---'
-                            kubectl get events -n ${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -20
-                        """
-                        error("❌ Déploiement échoué — voir les logs ci-dessus.")
-                    }
-                }
+                sh """
+                    kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=300s
+                    kubectl get pods -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE}
+                """
             }
         }
     }
