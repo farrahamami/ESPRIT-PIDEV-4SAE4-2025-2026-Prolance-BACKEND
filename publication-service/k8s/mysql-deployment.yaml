@@ -8,22 +8,21 @@ data:
   mysql-root-password: cm9vdA==                 # "root" encodé en base64
   mysql-database: cGlkZXZfcHVibGljYXRpb24=     # "pidev_publication" encodé en base64
 ---
-# FIX: PersistentVolume statique en hostPath (si pas de provisioner dynamique sur le cluster)
-# Si ton cluster a un StorageClass dynamique (ex: minikube → "standard", k3s → "local-path"),
-# supprime ce bloc PV et décommente storageClassName dans le PVC ci-dessous.
+# FIX (root cause CrashLoopBackOff): init SQL pour autoriser root depuis n'importe quel pod IP
+# MySQL crée root@localhost uniquement par défaut → les pods Spring Boot (IP 10.32.x.x) sont rejetés.
+# Le Docker entrypoint exécute automatiquement tous les *.sql dans /docker-entrypoint-initdb.d/
+# IMPORTANT : ne s'exécute que sur un volume vierge. Supprimer le PVC/PV existant avant de reappliquer.
 apiVersion: v1
-kind: PersistentVolume
+kind: ConfigMap
 metadata:
-  name: mysql-pv-publication
-spec:
-  capacity:
-    storage: 5Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /mnt/data/mysql-publication   # le dossier sera créé automatiquement sur le node
+  name: mysql-init-publication
+  namespace: devops
+data:
+  init.sql: |
+    ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'root';
+    CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED WITH mysql_native_password BY 'root';
+    GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
+    FLUSH PRIVILEGES;
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -33,7 +32,6 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: manual   # FIX: doit matcher le PV ci-dessus (ou votre StorageClass dynamique)
   resources:
     requests:
       storage: 5Gi
@@ -53,18 +51,10 @@ spec:
       labels:
         app: mysql-publication
     spec:
-      automountServiceAccountToken: false
-      # FIX: attendre que le PVC soit bound avant de démarrer
-      initContainers:
-        - name: wait-for-pvc
-          image: busybox:1.36
-          command: ['sh', '-c', 'until [ -d /var/lib/mysql ]; do echo waiting for volume; sleep 2; done']
-          volumeMounts:
-            - name: mysql-data
-              mountPath: /var/lib/mysql
+      automountServiceAccountToken: false   # fix: kubernetes:S6865
       containers:
         - name: mysql
-          image: mysql:8.0.36
+          image: mysql:8.0.36              # fix: kubernetes:S6596 (tag précis au lieu de latest)
           env:
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:
@@ -78,38 +68,25 @@ spec:
                   key: mysql-database
           ports:
             - containerPort: 3306
-          resources:
+          resources:                        # fix: kubernetes:S6892 / S6873 / S6864
             requests:
               cpu: "500m"
               memory: "512Mi"
             limits:
               memory: "1Gi"
               cpu: "1"
-          # FIX: readinessProbe pour que le service ne soit exposé que quand MySQL est prêt
-          readinessProbe:
-            exec:
-              command:
-                - sh
-                - -c
-                - "mysqladmin ping -u root -p${MYSQL_ROOT_PASSWORD} --silent"
-            initialDelaySeconds: 20
-            periodSeconds: 10
-            failureThreshold: 10
-          livenessProbe:
-            exec:
-              command:
-                - sh
-                - -c
-                - "mysqladmin ping -u root -p${MYSQL_ROOT_PASSWORD} --silent"
-            initialDelaySeconds: 40
-            periodSeconds: 20
           volumeMounts:
             - name: mysql-data
               mountPath: /var/lib/mysql
+            - name: mysql-init           # FIX: montage du script d'init pour accès distant
+              mountPath: /docker-entrypoint-initdb.d
       volumes:
         - name: mysql-data
           persistentVolumeClaim:
             claimName: mysql-pvc-publication
+        - name: mysql-init
+          configMap:
+            name: mysql-init-publication
 ---
 apiVersion: v1
 kind: Service
