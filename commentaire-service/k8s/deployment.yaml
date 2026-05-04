@@ -16,7 +16,7 @@ spec:
       automountServiceAccountToken: false   # fix: kubernetes:S6865
       containers:
         - name: commentaire-service
-          image: IMAGE_PLACEHOLDER            # remplacé par le CD via sed
+          image: yesmine111/commentaire-service:latest           # remplacé par le CD via sed
           ports:
             - containerPort: 8083
           env:

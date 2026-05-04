@@ -20,7 +20,6 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-
 @WebMvcTest(CommentaireController.class)
 @WithMockUser
 class CommentaireControllerTest {
@@ -125,7 +124,6 @@ class CommentaireControllerTest {
         }
     }
 
-
     @Nested
     @DisplayName("POST /api/commentaires")
     class CreateCommentaireTests {
@@ -174,7 +172,6 @@ class CommentaireControllerTest {
         }
     }
 
-
     @Nested
     @DisplayName("POST /api/commentaires/{parentId}/reply")
     class ReplyTests {
@@ -209,7 +206,6 @@ class CommentaireControllerTest {
         }
     }
 
-
     @Nested
     @DisplayName("PUT /api/commentaires/{id}")
     class UpdateCommentaireTests {
@@ -242,7 +238,6 @@ class CommentaireControllerTest {
                     .andExpect(status().isForbidden());
         }
     }
-
 
     @Nested
     @DisplayName("DELETE /api/commentaires/{id}")
