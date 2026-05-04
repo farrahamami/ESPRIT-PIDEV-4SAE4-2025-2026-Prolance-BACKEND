@@ -49,7 +49,7 @@ pipeline {
         stage('🧪 Tests') {
             steps {
                 dir('publication-service') {
-                    sh 'mvn test -B'
+                    sh 'mvn verify -B'
                 }
             }
         }
