@@ -47,7 +47,7 @@ pipeline {
         stage('🧪 Tests') {
             steps {
                 dir('reaction-service') {
-                    sh 'mvn verify -B'
+                   sh 'mvn verify jacoco:report -B'
                 }
             }
         }
