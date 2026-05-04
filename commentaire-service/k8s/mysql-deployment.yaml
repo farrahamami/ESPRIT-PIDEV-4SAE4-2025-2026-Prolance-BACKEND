@@ -29,6 +29,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
+  storageClassName: "" 
   volumeName: pv-mysql-commentaire
   resources:
     requests:
