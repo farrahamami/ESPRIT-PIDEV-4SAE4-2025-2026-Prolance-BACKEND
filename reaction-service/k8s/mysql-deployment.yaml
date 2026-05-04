@@ -52,7 +52,7 @@ spec:
               mountPath: /var/lib/mysql
       volumes:
         - name: mysql-data
-          emptyDir: {}   # Au lieu de PVC, utilise emptyDir
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -66,4 +66,4 @@ spec:
     - protocol: TCP
       port: 3306
       targetPort: 3306
-  type: ClusterIP   # Pas headless (clusterIP: None)
+  type: ClusterIP

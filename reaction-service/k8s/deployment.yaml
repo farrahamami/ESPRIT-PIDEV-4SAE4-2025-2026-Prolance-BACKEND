@@ -19,6 +19,18 @@ spec:
         app: reaction-service
     spec:
       automountServiceAccountToken: false
+      initContainers:
+        - name: wait-for-mysql
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for MySQL to be ready..."
+              until nc -z mysql-service-reaction 3306; do
+                sleep 2
+              done
+              echo "MySQL is ready!"
       containers:
         - name: reaction-service
           image: IMAGE_PLACEHOLDER
@@ -39,10 +51,12 @@ spec:
             - name: SERVER_PORT
               value: "8084"
             - name: EUREKA_CLIENT_ENABLED
-              value: "false"   # Désactiver Eureka si pas disponible
+              value: "false"
             - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
               value: "http://eureka-service:8761/eureka/"
             - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
+              value: "true"
+            - name: OTEL_SDK_DISABLED
               value: "true"
           resources:
             requests:
@@ -55,13 +69,13 @@ spec:
             httpGet:
               path: /actuator/health
               port: 8084
-            initialDelaySeconds: 90
+            initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 10
           livenessProbe:
             httpGet:
               path: /actuator/health
               port: 8084
-            initialDelaySeconds: 120
+            initialDelaySeconds: 60
             periodSeconds: 20
             failureThreshold: 10

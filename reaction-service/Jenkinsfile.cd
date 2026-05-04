@@ -61,7 +61,7 @@ pipeline {
         stage('✅ Vérifier le déploiement') {
             steps {
                 sh '''
-                    kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=120s
+                    kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=180s
                     kubectl get pods -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE}
                 '''
             }
