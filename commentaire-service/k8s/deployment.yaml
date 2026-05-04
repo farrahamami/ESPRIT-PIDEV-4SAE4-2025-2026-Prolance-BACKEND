@@ -65,11 +65,11 @@ spec:
               value: "true"
           resources:
             requests:
-              cpu: "500m"
-              memory: "512Mi"
+              cpu: "200m"
+              memory: "256Mi"
             limits:
-              memory: "1Gi"
-              cpu: "1"
+              memory: "512Mi"
+              cpu: "500m"
           # ✅ Délais augmentés pour laisser Spring Boot démarrer correctement
           readinessProbe:
             httpGet:
