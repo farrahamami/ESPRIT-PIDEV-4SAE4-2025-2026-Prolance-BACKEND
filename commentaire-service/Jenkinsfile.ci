@@ -69,7 +69,7 @@ pipeline {
         stage('🔒 OWASP Dependency-Check') {
             steps {
                 dir('commentaire-service') {
-                    sh 'mvn dependency-check:check -B || true'
+                   sh 'mvn dependency-check:check -B || true'
                 }
             }
             post {
