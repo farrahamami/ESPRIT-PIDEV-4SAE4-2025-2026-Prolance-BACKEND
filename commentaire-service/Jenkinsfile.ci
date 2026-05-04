@@ -120,16 +120,35 @@ pipeline {
         }
     }
     post {
-        success {
-            writeFile file: 'last-build.txt', text: "${IMAGE_TAG}"
-            archiveArtifacts artifacts: 'last-build.txt'
-            echo "✅ CI OK : image ${IMAGE_NAME}:${IMAGE_TAG} poussée sur DockerHub."
-        }
-        failure {
-            echo "❌ CI échoué."
-        }
-        always {
-            cleanWs()
-        }
+    success {
+        writeFile file: 'last-build.txt', text: "${IMAGE_TAG}"
+        archiveArtifacts artifacts: 'last-build.txt'
+        echo "✅ CI OK : image ${IMAGE_NAME}:${IMAGE_TAG} poussée sur DockerHub."
+
+        build job: 'commentaire-service-cd',
+              parameters: [string(name: 'IMAGE_TAG', value: "${IMAGE_TAG}")],
+              wait: false,
+              propagate: false
     }
+
+    // ✅ CD se lance aussi si UNSTABLE (OWASP HIGH/MEDIUM détectés)
+    unstable {
+        writeFile file: 'last-build.txt', text: "${IMAGE_TAG}"
+        archiveArtifacts artifacts: 'last-build.txt'
+        echo "⚠️ CI UNSTABLE : le CD se déclenche quand même."
+
+        build job: 'commentaire-service-cd',
+              parameters: [string(name: 'IMAGE_TAG', value: "${IMAGE_TAG}")],
+              wait: false,
+              propagate: false
+    }
+
+    failure {
+        echo "❌ CI échoué. Le CD ne se déclenche PAS."
+    }
+
+    always {
+        cleanWs()
+    }
+}
 }
