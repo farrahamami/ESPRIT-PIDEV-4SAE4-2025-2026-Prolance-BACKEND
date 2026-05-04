@@ -19,40 +19,56 @@ pipeline {
 
     stages {
         stage('📥 Checkout') {
-               steps {
-                   checkout([$class: 'GitSCM',
-                       branches: [[name: '*/devops/on-integrated6sur6/ads_cicd_k8s']],
-                       extensions: [[$class: 'CloneOption', depth: 1, shallow: true]],
-                       userRemoteConfigs: [[
-                           credentialsId: 'github-credentials',
-                           url: 'https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND'
-                       ]]
-                   ])
-               }
-       }
+            steps {
+                checkout([$class: 'GitSCM',
+                    branches: [[name: '*/devops/on-integrated6sur6/ads_cicd_k8s']],
+                    extensions: [[$class: 'CloneOption', depth: 1, shallow: true]],
+                    userRemoteConfigs: [[
+                        credentialsId: 'github-credentials',
+                        url: 'https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND'
+                    ]]
+                ])
+            }
+        }
 
         stage('🔖 Récupérer le tag CI') {
-                 steps {
-                     script {
-                         def tagFile = '/var/lib/jenkins/jobs/publication-service-ci/builds/lastSuccessfulBuild/archive/last-build.txt'
-                         try {
-                             env.IMAGE_TAG = sh(script: "cat ${tagFile}", returnStdout: true).trim()
-                         } catch (e) {
-                             env.IMAGE_TAG = 'latest'
-                         }
-                         echo "🔖 Tag récupéré : ${env.IMAGE_TAG}"
-                     }
-                 }
-             }
+            steps {
+                script {
+                    def tagFile = '/var/lib/jenkins/jobs/publication-service-ci/builds/lastSuccessfulBuild/archive/last-build.txt'
+                    try {
+                        env.IMAGE_TAG = sh(script: "cat ${tagFile}", returnStdout: true).trim()
+                    } catch (e) {
+                        env.IMAGE_TAG = 'latest'
+                    }
+                    echo "🔖 Tag récupéré : ${env.IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('🏗️ Préparer le namespace') {
+            steps {
+                sh '''
+                    kubectl get namespace ${K8S_NAMESPACE} 2>/dev/null || kubectl create namespace ${K8S_NAMESPACE}
+                '''
+            }
+        }
 
         stage('🚀 Deploy to Kubernetes') {
             steps {
                 dir('publication-service/k8s') {
                     sh '''
                         sed -i "s|IMAGE_PLACEHOLDER|${IMAGE_NAME}:${IMAGE_TAG}|g" deployment.yaml
-                        kubectl apply -f mysql-deployment.yaml --validate=false
-                        kubectl apply -f deployment.yaml --validate=false
-                        kubectl apply -f service.yaml --validate=false
+
+                        # Appliquer MySQL en premier
+                        kubectl apply -f mysql-deployment.yaml --validate=false -n ${K8S_NAMESPACE}
+
+                        # Attendre que MySQL soit prêt avant de déployer le service
+                        echo "⏳ Attente de MySQL..."
+                        kubectl rollout status deployment/mysql-publication -n ${K8S_NAMESPACE} --timeout=180s
+
+                        # Déployer l'application et le service
+                        kubectl apply -f deployment.yaml --validate=false -n ${K8S_NAMESPACE}
+                        kubectl apply -f service.yaml --validate=false -n ${K8S_NAMESPACE}
                     '''
                 }
             }
@@ -61,8 +77,10 @@ pipeline {
         stage('✅ Vérifier le déploiement') {
             steps {
                 sh '''
-                    kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=120s
+                    # FIX: Augmenter le timeout à 300s (Spring Boot + MySQL prennent du temps)
+                    kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=300s
                     kubectl get pods -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE}
+                    kubectl get services -n ${K8S_NAMESPACE}
                 '''
             }
         }
@@ -73,6 +91,12 @@ pipeline {
             echo "✅ CD OK : ${SERVICE_NAME} déployé sur Kubernetes avec l'image ${IMAGE_NAME}:${IMAGE_TAG}"
         }
         failure {
+            sh '''
+                echo "❌ Diagnostic des pods en échec :"
+                kubectl get pods -n ${K8S_NAMESPACE} -l app=publication-service 2>/dev/null || true
+                kubectl describe pods -n ${K8S_NAMESPACE} -l app=publication-service 2>/dev/null | tail -40 || true
+                kubectl logs -n ${K8S_NAMESPACE} -l app=publication-service --tail=50 2>/dev/null || true
+            '''
             echo "❌ CD échoué pour ${SERVICE_NAME}."
         }
         always {

@@ -5,7 +5,9 @@ import com.esprit.publicationservice.entities.Publication;
 import com.esprit.publicationservice.entities.TypePublication;
 import com.esprit.publicationservice.services.PublicationService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -50,17 +52,15 @@ public class PublicationController {
         catch (RuntimeException e) { return ResponseEntity.status(HttpStatus.NOT_FOUND).build(); }
     }
 
-
     @GetMapping("/user/{userId}/block-status")
     public ResponseEntity<Map<String, Object>> getBlockStatus(@PathVariable Integer userId) {
-        boolean blocked      = publicationService.isUserBlocked(userId);
+        boolean blocked       = publicationService.isUserBlocked(userId);
         long    archivedCount = publicationService.getArchivedCount(userId);
         return ResponseEntity.ok(Map.of(
-                "blocked",       blocked,
-                "warningCount",  archivedCount   // conserve le nom "warningCount" pour compatibilité front
+                "blocked",      blocked,
+                "warningCount", archivedCount
         ));
     }
-
 
     @GetMapping("/admin/blocked-users")
     public ResponseEntity<List<UserBlockDTO>> getBlockedUsers() {
@@ -68,17 +68,19 @@ public class PublicationController {
     }
 
     @PostMapping("/admin/users/{userId}/reactiver-compte")
-    public ResponseEntity<?> reactiverCompteUser(@PathVariable Integer userId) {
+    public ResponseEntity<Map<String, String>> reactiverCompteUser(@PathVariable Integer userId) {
+        // FIX: Remove wildcard <?> — use specific type (SonarQube L71)
         try {
             publicationService.reactiverCompteUser(userId);
             return ResponseEntity.ok(Map.of("message", "Compte réactivé. Publications archivées supprimées."));
         } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
         }
     }
 
     @PostMapping("/{id}/signaler")
-    public ResponseEntity<?> signaler(
+    public ResponseEntity<Object> signaler(
+            // FIX: Remove wildcard <?> — use specific type (SonarQube L81)
             @PathVariable Integer id,
             @RequestParam Integer userId,
             @RequestParam(value = "raison", required = false, defaultValue = "") String raison) {
@@ -91,9 +93,9 @@ public class PublicationController {
         }
     }
 
-
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> create(
+    public ResponseEntity<Object> create(
+            // FIX: Remove wildcard <?> — use specific type (SonarQube L96)
             @RequestParam("titre")    String titre,
             @RequestParam("contenue") String contenue,
             @RequestParam("type")     TypePublication type,
@@ -116,7 +118,8 @@ public class PublicationController {
     }
 
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> update(
+    public ResponseEntity<Object> update(
+            // FIX: Remove wildcard <?> — use specific type (SonarQube L119)
             @PathVariable Integer id,
             @RequestParam(value = "titre",         required = false) String titre,
             @RequestParam(value = "contenue",      required = false) String contenue,
@@ -138,13 +141,15 @@ public class PublicationController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable Integer id, @RequestParam Integer userId) {
+    public ResponseEntity<String> delete(@PathVariable Integer id, @RequestParam Integer userId) {
+        // FIX: Remove wildcard <?> — use specific type (SonarQube L141)
         try { publicationService.deletePublication(id, userId); return ResponseEntity.ok("Deleted"); }
         catch (RuntimeException e) { return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage()); }
     }
 
     @DeleteMapping("/admin/{id}")
-    public ResponseEntity<?> adminDelete(@PathVariable Integer id) {
+    public ResponseEntity<String> adminDelete(@PathVariable Integer id) {
+        // FIX: Remove wildcard <?> — use specific type (SonarQube L147)
         try { publicationService.adminDeletePublication(id); return ResponseEntity.ok("Deleted"); }
         catch (RuntimeException e) { return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage()); }
     }

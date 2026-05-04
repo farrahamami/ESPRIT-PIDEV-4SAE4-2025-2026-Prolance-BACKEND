@@ -6,7 +6,6 @@ import com.esprit.publicationservice.entities.Publication;
 import com.esprit.publicationservice.entities.StatutPublication;
 import com.esprit.publicationservice.entities.TypePublication;
 import com.esprit.publicationservice.repositories.PublicationRepository;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -436,8 +435,8 @@ class PublicationServiceTest {
         @DisplayName("lève IllegalArgumentException si le titre est null")
         void throwsIllegalArgumentException_whenTitreIsNull() {
             assertThatThrownBy(() ->
-                publicationService.createPublication(null, "contenu", TypePublication.ARTICLE,
-                        1, null, null, null, null, null))
+                    publicationService.createPublication(null, "contenu", TypePublication.ARTICLE,
+                            1, null, null, null, null, null))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("Title is required");
         }
@@ -446,8 +445,8 @@ class PublicationServiceTest {
         @DisplayName("lève IllegalArgumentException si le titre est vide")
         void throwsIllegalArgumentException_whenTitreIsBlank() {
             assertThatThrownBy(() ->
-                publicationService.createPublication("   ", "contenu", TypePublication.ARTICLE,
-                        1, null, null, null, null, null))
+                    publicationService.createPublication("   ", "contenu", TypePublication.ARTICLE,
+                            1, null, null, null, null, null))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("Title is required");
         }
@@ -456,8 +455,8 @@ class PublicationServiceTest {
         @DisplayName("lève IllegalArgumentException si le contenu est null")
         void throwsIllegalArgumentException_whenContenueIsNull() {
             assertThatThrownBy(() ->
-                publicationService.createPublication("titre", null, TypePublication.ARTICLE,
-                        1, null, null, null, null, null))
+                    publicationService.createPublication("titre", null, TypePublication.ARTICLE,
+                            1, null, null, null, null, null))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("Content is required");
         }
@@ -466,8 +465,8 @@ class PublicationServiceTest {
         @DisplayName("lève IllegalArgumentException si le contenu est vide")
         void throwsIllegalArgumentException_whenContenueIsBlank() {
             assertThatThrownBy(() ->
-                publicationService.createPublication("titre", "   ", TypePublication.ARTICLE,
-                        1, null, null, null, null, null))
+                    publicationService.createPublication("titre", "   ", TypePublication.ARTICLE,
+                            1, null, null, null, null, null))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("Content is required");
         }
@@ -478,8 +477,8 @@ class PublicationServiceTest {
             when(userClient.getUserById(42)).thenThrow(new RuntimeException("User not found"));
 
             assertThatThrownBy(() ->
-                publicationService.createPublication("titre", "contenu", TypePublication.ARTICLE,
-                        42, null, null, null, null, null))
+                    publicationService.createPublication("titre", "contenu", TypePublication.ARTICLE,
+                            42, null, null, null, null, null))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessageContaining("User not found: 42");
         }
@@ -491,8 +490,8 @@ class PublicationServiceTest {
             when(publicationRepository.countArchivedByUserId(1)).thenReturn(3L);
 
             assertThatThrownBy(() ->
-                publicationService.createPublication("titre", "contenu", TypePublication.ARTICLE,
-                        1, null, null, null, null, null))
+                    publicationService.createPublication("titre", "contenu", TypePublication.ARTICLE,
+                            1, null, null, null, null, null))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("BLOCKED");
         }
@@ -510,8 +509,8 @@ class PublicationServiceTest {
             when(publicationRepository.findById(1)).thenReturn(Optional.of(p));
 
             assertThatThrownBy(() ->
-                publicationService.updatePublication(1, "titre", "contenu",
-                        TypePublication.ARTICLE, 99, null, null, null, null, null, null, null))
+                    publicationService.updatePublication(1, "titre", "contenu",
+                            TypePublication.ARTICLE, 99, null, null, null, null, null, null, null))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessageContaining("Not authorized");
 
@@ -524,8 +523,8 @@ class PublicationServiceTest {
             when(publicationRepository.findById(99)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() ->
-                publicationService.updatePublication(99, "titre", "contenu",
-                        TypePublication.ARTICLE, 1, null, null, null, null, null, null, null))
+                    publicationService.updatePublication(99, "titre", "contenu",
+                            TypePublication.ARTICLE, 1, null, null, null, null, null, null, null))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessageContaining("Publication not found");
         }
