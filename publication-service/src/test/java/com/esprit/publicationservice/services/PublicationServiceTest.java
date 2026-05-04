@@ -1,14 +1,14 @@
 package com.esprit.publicationservice.services;
 
 import com.esprit.publicationservice.clients.UserClient;
+import com.esprit.publicationservice.dto.CreatePublicationRequest;
+import com.esprit.publicationservice.dto.UpdatePublicationRequest;
 import com.esprit.publicationservice.dto.UserBlockDTO;
 import com.esprit.publicationservice.dto.UserDTO;
 import com.esprit.publicationservice.entities.Publication;
 import com.esprit.publicationservice.entities.StatutPublication;
 import com.esprit.publicationservice.entities.TypePublication;
 import com.esprit.publicationservice.repositories.PublicationRepository;
-import com.esprit.publicationservice.services.PublicationService.CreatePublicationRequest;
-import com.esprit.publicationservice.services.PublicationService.UpdatePublicationRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -27,6 +27,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,6 +41,8 @@ class PublicationServiceTest {
 
     @InjectMocks
     private PublicationService publicationService;
+
+    // ========== HELPERS ==========
 
     private Publication makePublication(Integer id, Integer userId, StatutPublication statut) {
         Publication p = new Publication();
@@ -101,6 +104,8 @@ class PublicationServiceTest {
         request.setTitleFontSize(titleFontSize);
         return request;
     }
+
+    // ========== TESTS ==========
 
     @Nested
     @DisplayName("isUserBlocked()")
@@ -227,7 +232,7 @@ class PublicationServiceTest {
         @Test
         @DisplayName("retourne toutes les publications (actives et archivées)")
         void returnsAllPublicationsRegardlessOfStatus() {
-            Publication active = makePublication(1, 10, StatutPublication.ACTIVE);
+            Publication active   = makePublication(1, 10, StatutPublication.ACTIVE);
             Publication archived = makePublication(2, 11, StatutPublication.ARCHIVED);
             when(publicationRepository.findAllByOrderByCreateAtDesc()).thenReturn(List.of(active, archived));
             when(userClient.getUserById(anyInt())).thenReturn(new UserDTO());
@@ -324,9 +329,9 @@ class PublicationServiceTest {
         @Test
         @DisplayName("retourne les DTOs triés par archivedCount décroissant avec données user")
         void returnsSortedBlockStatusWithUserData() {
-            Publication a1 = makePublication(1, 10, StatutPublication.ARCHIVED);
-            Publication a2 = makePublication(2, 10, StatutPublication.ARCHIVED);
-            Publication a3 = makePublication(3, 11, StatutPublication.ARCHIVED);
+            Publication a1     = makePublication(1, 10, StatutPublication.ARCHIVED);
+            Publication a2     = makePublication(2, 10, StatutPublication.ARCHIVED);
+            Publication a3     = makePublication(3, 11, StatutPublication.ARCHIVED);
             Publication active = makePublication(4, 10, StatutPublication.ACTIVE);
 
             when(publicationRepository.findAllByOrderByCreateAtDesc()).thenReturn(List.of(a1, a2, a3, active));
@@ -373,6 +378,24 @@ class PublicationServiceTest {
             List<UserBlockDTO> result = publicationService.getAllUsersBlockStatus();
 
             assertThat(result).isEmpty();
+        }
+
+        @Test
+        @DisplayName("gère un user dont getName() retourne null")
+        void handlesNullUserNameGracefully() {
+            Publication archived = makePublication(1, 10, StatutPublication.ARCHIVED);
+            when(publicationRepository.findAllByOrderByCreateAtDesc()).thenReturn(List.of(archived));
+            UserDTO userWithNullName = new UserDTO();
+            userWithNullName.setId(10);
+            userWithNullName.setName(null);
+            userWithNullName.setLastName(null);
+            when(userClient.getUserById(10)).thenReturn(userWithNullName);
+
+            List<UserBlockDTO> result = publicationService.getAllUsersBlockStatus();
+
+            assertThat(result).hasSize(1);
+            assertThat(result.get(0).getName()).isEmpty();
+            assertThat(result.get(0).getLastName()).isEmpty();
         }
     }
 
@@ -439,7 +462,6 @@ class PublicationServiceTest {
         void throwsIllegalStateException_whenAlreadySignaled() {
             Publication p = makePublication(1, 10, StatutPublication.ACTIVE);
             p.getSignalements().add(5);
-
             when(publicationRepository.findById(1)).thenReturn(Optional.of(p));
 
             assertThatThrownBy(() -> publicationService.signalerPublication(1, 5, "raison"))
@@ -496,6 +518,9 @@ class PublicationServiceTest {
             assertThat(result).isNotNull();
             assertThat(result.getStatut()).isEqualTo(StatutPublication.ACTIVE);
             assertThat(result.getTitre()).isEqualTo("Titre");
+            assertThat(result.getTitleColor()).isEqualTo("#ffffff");
+            assertThat(result.getContentColor()).isEqualTo("#000000");
+            assertThat(result.getTitleFontSize()).isEqualTo("1rem");
             verify(publicationRepository).save(any());
         }
 
@@ -518,17 +543,36 @@ class PublicationServiceTest {
         }
 
         @Test
-        @DisplayName("lève IllegalArgumentException si type QUESTION avec images")
+        @DisplayName("crée une publication QUESTION avec des listes vides (non null)")
+        void createsQuestionWithEmptyFileLists() throws IOException {
+            when(userClient.getUserById(1)).thenReturn(makeUser(1));
+            when(publicationRepository.countArchivedByUserId(1)).thenReturn(0L);
+            when(publicationRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            // Listes non-null mais ne contenant que des fichiers vides
+            MultipartFile emptyFile = new MockMultipartFile("f", new byte[0]);
+            CreatePublicationRequest request = createRequest(
+                    "titre", "contenu", TypePublication.QUESTION,
+                    1, List.of(emptyFile), List.of(emptyFile),
+                    null, null, null
+            );
+
+            Publication result = publicationService.createPublication(request);
+
+            assertThat(result.getType()).isEqualTo(TypePublication.QUESTION);
+        }
+
+        @Test
+        @DisplayName("lève IllegalArgumentException si type QUESTION avec images non vides")
         void throwsIllegalArgumentException_whenQuestionWithImages() {
             when(userClient.getUserById(1)).thenReturn(makeUser(1));
             when(publicationRepository.countArchivedByUserId(1)).thenReturn(0L);
 
             MultipartFile image = new MockMultipartFile("img", "test.jpg", "image/jpeg", new byte[]{1, 2, 3});
-            List<MultipartFile> images = List.of(image);
 
             CreatePublicationRequest request = createRequest(
                     "titre", "contenu", TypePublication.QUESTION,
-                    1, images, null, null, null, null
+                    1, List.of(image), null, null, null, null
             );
 
             assertThatThrownBy(() -> publicationService.createPublication(request))
@@ -537,22 +581,93 @@ class PublicationServiceTest {
         }
 
         @Test
-        @DisplayName("lève IllegalArgumentException si type QUESTION avec PDFs")
+        @DisplayName("lève IllegalArgumentException si type QUESTION avec PDFs non vides")
         void throwsIllegalArgumentException_whenQuestionWithPdfs() {
             when(userClient.getUserById(1)).thenReturn(makeUser(1));
             when(publicationRepository.countArchivedByUserId(1)).thenReturn(0L);
 
             MultipartFile pdf = new MockMultipartFile("pdf", "test.pdf", "application/pdf", new byte[]{1, 2, 3});
-            List<MultipartFile> pdfs = List.of(pdf);
 
             CreatePublicationRequest request = createRequest(
                     "titre", "contenu", TypePublication.QUESTION,
-                    1, null, pdfs, null, null, null
+                    1, null, List.of(pdf), null, null, null
             );
 
             assertThatThrownBy(() -> publicationService.createPublication(request))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("No images/PDFs allowed for QUESTION type");
+        }
+
+        @Test
+        @DisplayName("lève IllegalArgumentException si l'image uploadée n'est pas du type image")
+        void throwsIllegalArgumentException_whenImageHasWrongContentType() {
+            when(userClient.getUserById(1)).thenReturn(makeUser(1));
+            when(publicationRepository.countArchivedByUserId(1)).thenReturn(0L);
+
+            MultipartFile wrongFile = new MockMultipartFile("file", "doc.pdf", "application/pdf", new byte[]{1, 2, 3});
+
+            CreatePublicationRequest request = createRequest(
+                    "titre", "contenu", TypePublication.ARTICLE,
+                    1, List.of(wrongFile), null, null, null, null
+            );
+
+            assertThatThrownBy(() -> publicationService.createPublication(request))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Only images accepted");
+        }
+
+        @Test
+        @DisplayName("lève IllegalArgumentException si le PDF uploadé n'est pas application/pdf")
+        void throwsIllegalArgumentException_whenPdfHasWrongContentType() {
+            when(userClient.getUserById(1)).thenReturn(makeUser(1));
+            when(publicationRepository.countArchivedByUserId(1)).thenReturn(0L);
+
+            MultipartFile wrongFile = new MockMultipartFile("file", "img.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+            CreatePublicationRequest request = createRequest(
+                    "titre", "contenu", TypePublication.ARTICLE,
+                    1, null, List.of(wrongFile), null, null, null
+            );
+
+            assertThatThrownBy(() -> publicationService.createPublication(request))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Only PDFs accepted");
+        }
+
+        @Test
+        @DisplayName("lève IllegalArgumentException si l'image a un contentType null")
+        void throwsIllegalArgumentException_whenImageContentTypeIsNull() {
+            when(userClient.getUserById(1)).thenReturn(makeUser(1));
+            when(publicationRepository.countArchivedByUserId(1)).thenReturn(0L);
+
+            MultipartFile noContentType = new MockMultipartFile("file", "file.bin", null, new byte[]{1, 2, 3});
+
+            CreatePublicationRequest request = createRequest(
+                    "titre", "contenu", TypePublication.ARTICLE,
+                    1, List.of(noContentType), null, null, null, null
+            );
+
+            assertThatThrownBy(() -> publicationService.createPublication(request))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Only images accepted");
+        }
+
+        @Test
+        @DisplayName("lève IllegalArgumentException si le PDF a un contentType null")
+        void throwsIllegalArgumentException_whenPdfContentTypeIsNull() {
+            when(userClient.getUserById(1)).thenReturn(makeUser(1));
+            when(publicationRepository.countArchivedByUserId(1)).thenReturn(0L);
+
+            MultipartFile noContentType = new MockMultipartFile("file", "file.bin", null, new byte[]{1, 2, 3});
+
+            CreatePublicationRequest request = createRequest(
+                    "titre", "contenu", TypePublication.ARTICLE,
+                    1, null, List.of(noContentType), null, null, null
+            );
+
+            assertThatThrownBy(() -> publicationService.createPublication(request))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Only PDFs accepted");
         }
     }
 
@@ -667,11 +782,12 @@ class PublicationServiceTest {
             assertThat(result.getTitre()).isEqualTo("Nouveau titre");
             assertThat(result.getContenue()).isEqualTo("Nouveau contenu");
             assertThat(result.getType()).isEqualTo(TypePublication.REVIEW);
+            assertThat(result.getTitleColor()).isEqualTo("#ff0000");
             verify(publicationRepository).save(any());
         }
 
         @Test
-        @DisplayName("ne modifie pas le titre si null ou vide")
+        @DisplayName("ne modifie pas le titre si null")
         void doesNotChangeTitre_whenNull() throws IOException {
             Publication p = makePublication(1, 10, StatutPublication.ACTIVE);
             when(publicationRepository.findById(1)).thenReturn(Optional.of(p));
@@ -687,6 +803,48 @@ class PublicationServiceTest {
             Publication result = publicationService.updatePublication(request);
 
             assertThat(result.getTitre()).isEqualTo("Titre de test");
+        }
+
+        @Test
+        @DisplayName("ne modifie pas le titre si vide (blank)")
+        void doesNotChangeTitre_whenBlank() throws IOException {
+            Publication p = makePublication(1, 10, StatutPublication.ACTIVE);
+            when(publicationRepository.findById(1)).thenReturn(Optional.of(p));
+            when(publicationRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            UpdatePublicationRequest request = updateRequest(
+                    1, "   ", "   ",
+                    null, 10,
+                    null, null, null, null,
+                    null, null, null
+            );
+
+            Publication result = publicationService.updatePublication(request);
+
+            assertThat(result.getTitre()).isEqualTo("Titre de test");
+            assertThat(result.getContenue()).isEqualTo("Contenu de test");
+        }
+
+        @Test
+        @DisplayName("conserve les fichiers existants et ajoute les nouveaux si toKeep non null")
+        void keepsExistingFilesAndAddsNew() throws IOException {
+            Publication p = makePublication(1, 10, StatutPublication.ACTIVE);
+            p.getImages().add("existing_image.jpg");
+
+            when(publicationRepository.findById(1)).thenReturn(Optional.of(p));
+            when(publicationRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            UpdatePublicationRequest request = updateRequest(
+                    1, "titre", "contenu",
+                    TypePublication.ARTICLE, 10,
+                    null, List.of("existing_image.jpg"),
+                    null, null,
+                    null, null, null
+            );
+
+            Publication result = publicationService.updatePublication(request);
+
+            assertThat(result.getImages()).contains("existing_image.jpg");
         }
     }
 
@@ -804,7 +962,7 @@ class PublicationServiceTest {
         @DisplayName("supprime les publications archivées et remet les signalements à zéro sur les actives")
         void deletesArchivedAndClearsSignalementsOnActive() {
             Publication archived = makePublication(1, 5, StatutPublication.ARCHIVED);
-            Publication active = makePublication(2, 5, StatutPublication.ACTIVE);
+            Publication active   = makePublication(2, 5, StatutPublication.ACTIVE);
             active.getSignalements().addAll(List.of(1, 2));
             active.getSignalementRaisons().addAll(List.of("raison1", "raison2"));
 

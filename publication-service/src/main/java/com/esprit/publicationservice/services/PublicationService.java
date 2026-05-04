@@ -1,6 +1,9 @@
 package com.esprit.publicationservice.services;
 
 import com.esprit.publicationservice.clients.UserClient;
+import com.esprit.publicationservice.dto.BasePublicationRequest;
+import com.esprit.publicationservice.dto.CreatePublicationRequest;
+import com.esprit.publicationservice.dto.UpdatePublicationRequest;
 import com.esprit.publicationservice.dto.UserBlockDTO;
 import com.esprit.publicationservice.dto.UserDTO;
 import com.esprit.publicationservice.entities.Publication;
@@ -16,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -25,92 +29,20 @@ public class PublicationService {
 
     private final PublicationRepository publicationRepository;
     private final UserClient userClient;
-    private static final String UPLOAD_DIR = "uploads/publications/";
-    private static final int SIGNALEMENT_THRESHOLD = 3;
-    private static final long BLOCK_THRESHOLD = 3;
+
+    private static final String UPLOAD_DIR           = "uploads/publications/";
+    private static final int    SIGNALEMENT_THRESHOLD = 3;
+    private static final long   BLOCK_THRESHOLD       = 3;
     private static final String PUBLICATION_NOT_FOUND = "Publication not found";
 
-    // Custom exceptions
+    // ========== CUSTOM EXCEPTIONS ==========
+
     public static class PublicationNotFoundException extends RuntimeException {
         public PublicationNotFoundException(String message) { super(message); }
     }
+
     public static class UserNotFoundException extends RuntimeException {
         public UserNotFoundException(String message) { super(message); }
-    }
-
-    // ========== REQUEST DTO CLASSES ==========
-
-    public static class CreatePublicationRequest {
-        private String titre;
-        private String contenue;
-        private TypePublication type;
-        private Integer userId;
-        private List<MultipartFile> images;
-        private List<MultipartFile> pdfs;
-        private String titleColor;
-        private String contentColor;
-        private String titleFontSize;
-
-        // Getters and Setters
-        public String getTitre() { return titre; }
-        public void setTitre(String titre) { this.titre = titre; }
-        public String getContenue() { return contenue; }
-        public void setContenue(String contenue) { this.contenue = contenue; }
-        public TypePublication getType() { return type; }
-        public void setType(TypePublication type) { this.type = type; }
-        public Integer getUserId() { return userId; }
-        public void setUserId(Integer userId) { this.userId = userId; }
-        public List<MultipartFile> getImages() { return images; }
-        public void setImages(List<MultipartFile> images) { this.images = images; }
-        public List<MultipartFile> getPdfs() { return pdfs; }
-        public void setPdfs(List<MultipartFile> pdfs) { this.pdfs = pdfs; }
-        public String getTitleColor() { return titleColor; }
-        public void setTitleColor(String titleColor) { this.titleColor = titleColor; }
-        public String getContentColor() { return contentColor; }
-        public void setContentColor(String contentColor) { this.contentColor = contentColor; }
-        public String getTitleFontSize() { return titleFontSize; }
-        public void setTitleFontSize(String titleFontSize) { this.titleFontSize = titleFontSize; }
-    }
-
-    public static class UpdatePublicationRequest {
-        private Integer id;
-        private String titre;
-        private String contenue;
-        private TypePublication type;
-        private Integer userId;
-        private List<MultipartFile> newImages;
-        private List<String> imagesToKeep;
-        private List<MultipartFile> newPdfs;
-        private List<String> pdfsToKeep;
-        private String titleColor;
-        private String contentColor;
-        private String titleFontSize;
-
-        // Getters and Setters
-        public Integer getId() { return id; }
-        public void setId(Integer id) { this.id = id; }
-        public String getTitre() { return titre; }
-        public void setTitre(String titre) { this.titre = titre; }
-        public String getContenue() { return contenue; }
-        public void setContenue(String contenue) { this.contenue = contenue; }
-        public TypePublication getType() { return type; }
-        public void setType(TypePublication type) { this.type = type; }
-        public Integer getUserId() { return userId; }
-        public void setUserId(Integer userId) { this.userId = userId; }
-        public List<MultipartFile> getNewImages() { return newImages; }
-        public void setNewImages(List<MultipartFile> newImages) { this.newImages = newImages; }
-        public List<String> getImagesToKeep() { return imagesToKeep; }
-        public void setImagesToKeep(List<String> imagesToKeep) { this.imagesToKeep = imagesToKeep; }
-        public List<MultipartFile> getNewPdfs() { return newPdfs; }
-        public void setNewPdfs(List<MultipartFile> newPdfs) { this.newPdfs = newPdfs; }
-        public List<String> getPdfsToKeep() { return pdfsToKeep; }
-        public void setPdfsToKeep(List<String> pdfsToKeep) { this.pdfsToKeep = pdfsToKeep; }
-        public String getTitleColor() { return titleColor; }
-        public void setTitleColor(String titleColor) { this.titleColor = titleColor; }
-        public String getContentColor() { return contentColor; }
-        public void setContentColor(String contentColor) { this.contentColor = contentColor; }
-        public String getTitleFontSize() { return titleFontSize; }
-        public void setTitleFontSize(String titleFontSize) { this.titleFontSize = titleFontSize; }
     }
 
     // ========== PUBLIC METHODS ==========
@@ -189,14 +121,14 @@ public class PublicationService {
                 .findAllByOrderByCreateAtDesc()
                 .stream()
                 .filter(p -> p.getStatut() == StatutPublication.ARCHIVED)
-                .collect(java.util.stream.Collectors.groupingBy(Publication::getUserId, java.util.stream.Collectors.counting()));
+                .collect(Collectors.groupingBy(Publication::getUserId, Collectors.counting()));
 
         List<UserBlockDTO> result = new ArrayList<>();
         for (Map.Entry<Integer, Long> entry : archivedCountByUser.entrySet()) {
-            Integer uid = entry.getKey();
-            long count  = entry.getValue();
-            String name = "";
-            String lastName = "";
+            Integer uid      = entry.getKey();
+            long    count    = entry.getValue();
+            String  name     = "";
+            String  lastName = "";
             try {
                 UserDTO u = userClient.getUserById(uid);
                 name     = u.getName()     != null ? u.getName()     : "";
@@ -235,14 +167,10 @@ public class PublicationService {
         return saved;
     }
 
-    // FIXED: Now uses parameter object (1 parameter instead of 9)
     public Publication createPublication(CreatePublicationRequest request) throws IOException {
-        validateCreateInput(request.getTitre(), request.getContenue(), request.getUserId(),
-                request.getType(), request.getImages(), request.getPdfs());
+        validateCreateInput(request);
 
-        Publication p = buildPublication(request.getTitre(), request.getContenue(), request.getType(),
-                request.getUserId(), request.getTitleColor(),
-                request.getContentColor(), request.getTitleFontSize());
+        Publication p = buildPublication(request);
         p.setImages(saveFiles(request.getImages(), false));
         p.setPdfs(saveFiles(request.getPdfs(), true));
 
@@ -251,16 +179,15 @@ public class PublicationService {
         return saved;
     }
 
-    // FIXED: Now uses parameter object (1 parameter instead of 12)
     public Publication updatePublication(UpdatePublicationRequest request) throws IOException {
         Publication p = publicationRepository.findById(request.getId())
                 .orElseThrow(() -> new PublicationNotFoundException(PUBLICATION_NOT_FOUND));
 
-        if (!p.getUserId().equals(request.getUserId()))
+        if (!p.getUserId().equals(request.getUserId())) {
             throw new UserNotFoundException("Not authorized");
+        }
 
-        applyTextFields(p, request.getTitre(), request.getContenue(), request.getType(),
-                request.getTitleColor(), request.getContentColor(), request.getTitleFontSize());
+        applyTextFields(p, request);
         p.setImages(updateFiles(p.getImages(), request.getImagesToKeep(), request.getNewImages(), false));
         p.setPdfs(updateFiles(p.getPdfs(), request.getPdfsToKeep(), request.getNewPdfs(), true));
 
@@ -272,63 +199,83 @@ public class PublicationService {
     public void deletePublication(Integer id, Integer userId) {
         Publication p = publicationRepository.findById(id)
                 .orElseThrow(() -> new PublicationNotFoundException(PUBLICATION_NOT_FOUND));
-        if (!p.getUserId().equals(userId)) throw new UserNotFoundException("Not authorized");
-        p.getImages().forEach(this::deleteFile);
-        p.getPdfs().forEach(this::deleteFile);
+        if (!p.getUserId().equals(userId)) {
+            throw new UserNotFoundException("Not authorized");
+        }
+        deletePublicationFiles(p);
         publicationRepository.delete(p);
     }
 
     public void adminDeletePublication(Integer id) {
         Publication p = publicationRepository.findById(id)
                 .orElseThrow(() -> new PublicationNotFoundException(PUBLICATION_NOT_FOUND));
-        p.getImages().forEach(this::deleteFile);
-        p.getPdfs().forEach(this::deleteFile);
+        deletePublicationFiles(p);
         publicationRepository.delete(p);
     }
 
     // ========== PRIVATE HELPER METHODS ==========
 
-    private void validateCreateInput(String titre, String contenue, Integer userId,
-                                     TypePublication type, List<MultipartFile> images, List<MultipartFile> pdfs) {
-        if (titre == null || titre.trim().isEmpty()) throw new IllegalArgumentException("Title is required");
-        if (contenue == null || contenue.trim().isEmpty()) throw new IllegalArgumentException("Content is required");
+    private void validateCreateInput(CreatePublicationRequest request) {
+        String titre    = request.getTitre();
+        String contenue = request.getContenue();
+        Integer userId  = request.getUserId();
+
+        if (titre == null || titre.trim().isEmpty()) {
+            throw new IllegalArgumentException("Title is required");
+        }
+        if (contenue == null || contenue.trim().isEmpty()) {
+            throw new IllegalArgumentException("Content is required");
+        }
         try {
             userClient.getUserById(userId);
         } catch (Exception e) {
             throw new UserNotFoundException("User not found: " + userId);
         }
         if (isUserBlocked(userId)) {
-            throw new IllegalStateException("BLOCKED: Votre compte est bloqué suite à 3 posts signalés. Contactez l'administrateur.");
+            throw new IllegalStateException(
+                    "BLOCKED: Votre compte est bloqué suite à 3 posts signalés. Contactez l'administrateur."
+            );
         }
-        if (type == TypePublication.QUESTION) {
+        if (request.getType() == TypePublication.QUESTION) {
+            List<MultipartFile> images = request.getImages();
+            List<MultipartFile> pdfs   = request.getPdfs();
             boolean hasImages = images != null && images.stream().anyMatch(f -> !f.isEmpty());
             boolean hasPdfs   = pdfs   != null && pdfs.stream().anyMatch(f -> !f.isEmpty());
-            if (hasImages || hasPdfs) throw new IllegalArgumentException("No images/PDFs allowed for QUESTION type.");
+            if (hasImages || hasPdfs) {
+                throw new IllegalArgumentException("No images/PDFs allowed for QUESTION type.");
+            }
         }
     }
 
-    private Publication buildPublication(String titre, String contenue, TypePublication type,
-                                         Integer userId, String titleColor, String contentColor, String titleFontSize) {
+    private Publication buildPublication(BasePublicationRequest request) {
         Publication p = new Publication();
-        p.setTitre(titre);
-        p.setContenue(contenue);
-        p.setType(type);
-        p.setUserId(userId);
+        p.setTitre(request.getTitre());
+        p.setContenue(request.getContenue());
+        p.setType(request.getType());
+        p.setUserId(request.getUserId());
         p.setStatut(StatutPublication.ACTIVE);
-        if (titleColor    != null) p.setTitleColor(titleColor);
-        if (contentColor  != null) p.setContentColor(contentColor);
-        if (titleFontSize != null) p.setTitleFontSize(titleFontSize);
+        applyColorFields(p, request);
         return p;
     }
 
-    private void applyTextFields(Publication p, String titre, String contenue, TypePublication type,
-                                 String titleColor, String contentColor, String titleFontSize) {
+    private void applyTextFields(Publication p, BasePublicationRequest request) {
+        String titre    = request.getTitre();
+        String contenue = request.getContenue();
         if (titre    != null && !titre.trim().isEmpty())    p.setTitre(titre);
         if (contenue != null && !contenue.trim().isEmpty()) p.setContenue(contenue);
-        if (type         != null) p.setType(type);
-        if (titleColor   != null) p.setTitleColor(titleColor);
-        if (contentColor != null) p.setContentColor(contentColor);
-        if (titleFontSize != null) p.setTitleFontSize(titleFontSize);
+        if (request.getType() != null) p.setType(request.getType());
+        applyColorFields(p, request);
+    }
+
+    private void applyColorFields(Publication p, BasePublicationRequest request) {
+        if (request.getTitleColor()   != null) p.setTitleColor(request.getTitleColor());
+        if (request.getContentColor() != null) p.setContentColor(request.getContentColor());
+        if (request.getTitleFontSize() != null) p.setTitleFontSize(request.getTitleFontSize());
+    }
+
+    private void deletePublicationFiles(Publication p) {
+        p.getImages().forEach(this::deleteFile);
+        p.getPdfs().forEach(this::deleteFile);
     }
 
     private List<String> saveFiles(List<MultipartFile> files, boolean isPdf) throws IOException {
@@ -366,10 +313,14 @@ public class PublicationService {
 
     private String saveFile(MultipartFile file, boolean isPdf) throws IOException {
         String ct = file.getContentType();
-        if (isPdf  && (ct == null || !ct.equals("application/pdf"))) throw new IllegalArgumentException("Only PDFs accepted");
-        if (!isPdf && (ct == null || !ct.startsWith("image/")))      throw new IllegalArgumentException("Only images accepted");
+        if (isPdf  && (ct == null || !ct.equals("application/pdf"))) {
+            throw new IllegalArgumentException("Only PDFs accepted");
+        }
+        if (!isPdf && (ct == null || !ct.startsWith("image/"))) {
+            throw new IllegalArgumentException("Only images accepted");
+        }
         String name = UUID.randomUUID() + "_" + file.getOriginalFilename();
-        Path path = Paths.get(UPLOAD_DIR);
+        Path   path = Paths.get(UPLOAD_DIR);
         if (!Files.exists(path)) Files.createDirectories(path);
         Files.copy(file.getInputStream(), path.resolve(name), StandardCopyOption.REPLACE_EXISTING);
         return name;
