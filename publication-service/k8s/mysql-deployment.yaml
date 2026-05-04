@@ -5,24 +5,8 @@ metadata:
   namespace: devops
 type: Opaque
 data:
-  mysql-root-password: cm9vdA==                 # "root" encodé en base64
-  mysql-database: cGlkZXZfcHVibGljYXRpb24=     # "pidev_publication" encodé en base64
----
-# FIX (root cause CrashLoopBackOff): init SQL pour autoriser root depuis n'importe quel pod IP
-# MySQL crée root@localhost uniquement par défaut → les pods Spring Boot (IP 10.32.x.x) sont rejetés.
-# Le Docker entrypoint exécute automatiquement tous les *.sql dans /docker-entrypoint-initdb.d/
-# IMPORTANT : ne s'exécute que sur un volume vierge. Supprimer le PVC/PV existant avant de reappliquer.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: mysql-init-publication
-  namespace: devops
-data:
-  init.sql: |
-    ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'root';
-    CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED WITH mysql_native_password BY 'root';
-    GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
-    FLUSH PRIVILEGES;
+  mysql-root-password: cm9vdA==           # "root" encodé en base64
+  mysql-database: cGlkZXZfcHVibGljYXRpb24=   # "pidev_publication" encodé en base64
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -78,15 +62,10 @@ spec:
           volumeMounts:
             - name: mysql-data
               mountPath: /var/lib/mysql
-            - name: mysql-init           # FIX: montage du script d'init pour accès distant
-              mountPath: /docker-entrypoint-initdb.d
       volumes:
         - name: mysql-data
           persistentVolumeClaim:
             claimName: mysql-pvc-publication
-        - name: mysql-init
-          configMap:
-            name: mysql-init-publication
 ---
 apiVersion: v1
 kind: Service

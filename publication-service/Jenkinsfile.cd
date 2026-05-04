@@ -45,14 +45,6 @@ pipeline {
             }
         }
 
-        stage('🏗️ Préparer le namespace') {
-            steps {
-                sh '''
-                    kubectl get namespace ${K8S_NAMESPACE} 2>/dev/null || kubectl create namespace ${K8S_NAMESPACE}
-                '''
-            }
-        }
-
         stage('🔭 Déployer Jaeger') {
             steps {
                 dir('publication-service/k8s') {
@@ -75,52 +67,8 @@ pipeline {
                 dir('publication-service/k8s') {
                     sh '''
                         sed -i "s|IMAGE_PLACEHOLDER|${IMAGE_NAME}:${IMAGE_TAG}|g" deployment.yaml
-
-                        # ── FIX: vérifier que le PVC est Bound avant d'appliquer MySQL ──
-                        kubectl apply -f mysql-deployment.yaml --validate=false -n ${K8S_NAMESPACE}
-
-                        echo "⏳ Attente que le PVC MySQL soit Bound..."
-                        for i in $(seq 1 30); do
-                            STATUS=$(kubectl get pvc mysql-pvc-publication -n ${K8S_NAMESPACE} -o jsonpath="{.status.phase}" 2>/dev/null)
-                            echo "  PVC status: ${STATUS}"
-                            if [ "${STATUS}" = "Bound" ]; then
-                                echo "✅ PVC Bound."
-                                break
-                            fi
-                            if [ "$i" = "30" ]; then
-                                echo "❌ PVC toujours non Bound après 150s. Diagnostic:"
-                                kubectl describe pvc mysql-pvc-publication -n ${K8S_NAMESPACE}
-                                kubectl get pv
-                                exit 1
-                            fi
-                            sleep 5
-                        done
-
-                        echo "⏳ Attente que MySQL soit Running..."
-                        kubectl rollout status deployment/mysql-publication -n ${K8S_NAMESPACE} --timeout=240s
-
-                        # ── FIX: attendre que le service DNS mysql-service-publication soit résolvable ──
-                        echo "⏳ Vérification DNS du service MySQL..."
-                        for i in $(seq 1 20); do
-                            MYSQL_IP=$(kubectl get endpoints mysql-service-publication -n ${K8S_NAMESPACE} \
-                                -o jsonpath="{.subsets[0].addresses[0].ip}" 2>/dev/null)
-                            if [ -n "${MYSQL_IP}" ]; then
-                                echo "✅ MySQL endpoint disponible: ${MYSQL_IP}"
-                                break
-                            fi
-                            echo "  En attente de l'endpoint MySQL... ($i/20)"
-                            if [ "$i" = "20" ]; then
-                                echo "❌ Endpoint MySQL jamais prêt. Diagnostic:"
-                                kubectl describe deployment mysql-publication -n ${K8S_NAMESPACE}
-                                kubectl get pods -l app=mysql-publication -n ${K8S_NAMESPACE}
-                                exit 1
-                            fi
-                            sleep 5
-                        done
-
-                        # Déployer l'application et le service
-                        kubectl apply -f deployment.yaml --validate=false -n ${K8S_NAMESPACE}
-                        kubectl apply -f service.yaml --validate=false -n ${K8S_NAMESPACE}
+                        kubectl apply -f deployment.yaml --validate=false
+                        kubectl apply -f service.yaml --validate=false
                     '''
                 }
             }
@@ -129,9 +77,8 @@ pipeline {
         stage('✅ Vérifier le déploiement') {
             steps {
                 sh '''
-                    kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=300s
+                    kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=120s
                     kubectl get pods -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE}
-                    kubectl get services -n ${K8S_NAMESPACE}
                 '''
             }
         }

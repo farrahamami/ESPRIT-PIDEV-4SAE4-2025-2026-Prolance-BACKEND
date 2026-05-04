@@ -13,10 +13,10 @@ spec:
       labels:
         app: publication-service
     spec:
-      automountServiceAccountToken: false
+      automountServiceAccountToken: false   # fix: kubernetes:S6865
       containers:
         - name: publication-service
-          image: IMAGE_PLACEHOLDER
+          image: yesmine111/publication-service:latest  # fix: kubernetes:S6596
           ports:
             - containerPort: 8082
           env:
@@ -41,7 +41,7 @@ spec:
             - name: JAEGER_HOST
               value: "jaeger-service"
             # ==================
-          resources:
+          resources:                        # fix: kubernetes:S6892 / S6873 / S6864 / S6897
             requests:
               cpu: "500m"
               memory: "512Mi"
