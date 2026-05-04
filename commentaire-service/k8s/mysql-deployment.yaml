@@ -5,8 +5,8 @@ metadata:
   namespace: devops
 type: Opaque
 data:
-  mysql-root-password: cm9vdA==               # "root" encodé en base64
-  mysql-database: cGlkZXZfY29tbWVudGFpcmU=   # "pidev_commentaire" encodé en base64
+  mysql-root-password: cm9vdA==                  # "root" encodé en base64
+  mysql-database: cGlkZXZfY29tbWVudGFpcmU=      # "pidev_commentaire" encodé en base64
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -35,9 +35,10 @@ spec:
       labels:
         app: mysql-commentaire
     spec:
+      automountServiceAccountToken: false   # fix: kubernetes:S6865
       containers:
         - name: mysql
-          image: mysql:8
+          image: mysql:8.0.36              # fix: kubernetes:S6596 (tag précis au lieu de latest)
           env:
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:
@@ -51,6 +52,13 @@ spec:
                   key: mysql-database
           ports:
             - containerPort: 3306
+          resources:                        # fix: kubernetes:S6892 / S6873 / S6864
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
           volumeMounts:
             - name: mysql-data
               mountPath: /var/lib/mysql

@@ -13,9 +13,10 @@ spec:
       labels:
         app: commentaire-service
     spec:
+      automountServiceAccountToken: false   # fix: kubernetes:S6865
       containers:
         - name: commentaire-service
-          image: farahchbeb/commentaire-service:latest
+          image: IMAGE_PLACEHOLDER            # remplacé par le CD via sed
           ports:
             - containerPort: 8083
           env:
@@ -36,6 +37,13 @@ spec:
               value: "http://eureka-service:8761/eureka/"
             - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
               value: "true"
+          resources:                        # fix: kubernetes:S6892 / S6873 / S6864 / S6897
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
           readinessProbe:
             httpGet:
               path: /actuator/health
@@ -48,18 +56,3 @@ spec:
               port: 8083
             initialDelaySeconds: 60
             periodSeconds: 20
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: spring-service
-  namespace: devops
-spec:
-  selector:
-    app: commentaire-service
-  ports:
-    - protocol: TCP
-      port: 8083
-      targetPort: 8083
-      nodePort: 32083
-  type: NodePort
