@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "marahmarah123/inscription-service"
+        DOCKER_IMAGE = "marahmarah123/event-service"
         DOCKER_TAG   = "${BUILD_NUMBER}"
         SONAR_URL    = "http://localhost:9000"
     }
@@ -18,7 +18,7 @@ pipeline {
 
         stage('Build & Package') {
             steps {
-                dir('inscription-service') {
+                dir('event-service') {
                     sh 'chmod +x mvnw'
                     sh './mvnw clean package -DskipTests'
                 }
@@ -27,22 +27,22 @@ pipeline {
 
         stage('Tests') {
             steps {
-                dir('inscription-service') {
+                dir('event-service') {
                     sh './mvnw test'
                 }
             }
             post {
                 always {
-                    junit 'inscription-service/target/surefire-reports/*.xml'
+                    junit 'event-service/target/surefire-reports/*.xml'
                 }
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                dir('inscription-service') {
+                dir('event-service') {
                     withSonarQubeEnv('SonarQube') {
-                        sh './mvnw sonar:sonar -Dsonar.projectKey=inscription-service -Dsonar.host.url=${SONAR_URL}'
+                        sh './mvnw sonar:sonar -Dsonar.projectKey=event-service -Dsonar.host.url=${SONAR_URL}'
                     }
                 }
             }
@@ -50,7 +50,7 @@ pipeline {
 
         stage('Docker Build & Push') {
             steps {
-                dir('inscription-service') {
+                dir('event-service') {
                     withCredentials([usernamePassword(
                         credentialsId: 'dockerhub-credentials',
                         usernameVariable: 'DOCKER_USER',
@@ -68,17 +68,17 @@ pipeline {
 
         stage('Save build info for CD') {
             steps {
-                sh 'echo ${DOCKER_TAG} > inscription-service-tag.txt'
-                archiveArtifacts artifacts: 'inscription-service-tag.txt'
+                sh 'echo ${DOCKER_TAG} > event-service-tag.txt'
+                archiveArtifacts artifacts: 'event-service-tag.txt'
             }
         }
     }
 
     post {
         success {
-            echo 'CI inscription-service réussi ✅'
-            build job: 'inscription-service-CD', wait: false
+            echo 'CI event-service réussi ✅'
+            build job: 'event-service-CD', wait: false
         }
-        failure { echo 'CI inscription-service échoué ❌' }
+        failure { echo 'CI event-service échoué ❌' }
     }
 }
