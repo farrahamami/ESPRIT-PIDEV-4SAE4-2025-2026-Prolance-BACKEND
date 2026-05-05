@@ -15,18 +15,19 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                sh '''
-                    rm -rf inscription-service
-                    mkdir -p inscription-service
-                    cd inscription-service
-                    git init
-                    git remote add origin https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND.git
-                    git config core.sparseCheckout true
-                    echo "inscription-service/*" > .git/info/sparse-checkout
-                    git pull --depth=1 origin devops/on-integrated6sur6/ads_cicd_k8s
-                    mv inscription-service/* .
-                    rm -rf inscription-service
-                '''
+                retry(5) {
+                    sh '''
+                        git init
+                        git remote add origin https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND.git
+                        git config core.sparseCheckout true
+                        git config http.postBuffer 524288000
+                        git config http.lowSpeedLimit 0
+                        git config http.lowSpeedTime 999999
+                        echo "inscription-service/" > .git/info/sparse-checkout
+                        git fetch --depth=1 --filter=blob:none origin devops/on-integrated6sur6/ads_cicd_k8s
+                        git checkout FETCH_HEAD
+                    '''
+                }
             }
         }
 
