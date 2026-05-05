@@ -11,6 +11,8 @@ pipeline {
 
         stage('Checkout') {
             steps {
+                sh 'git config --global http.postBuffer 524288000'
+                sh 'git config --global http.sslVerify false'
                 checkout([
                     $class: 'GitSCM',
                     branches: [[name: 'devops/on-integrated6sur6/ads_cicd_k8s']],
