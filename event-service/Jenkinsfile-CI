@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "marahmarah123/event-service"
+        DOCKER_IMAGE = "marahmarah123/inscription-service"
         DOCKER_TAG   = "${BUILD_NUMBER}"
         SONAR_URL    = "http://localhost:9000"
     }
@@ -11,23 +11,14 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: 'devops/on-integrated6sur6/ads_cicd_k8s']],
-                    extensions: [
-                        [$class: 'SparseCheckoutPaths',
-                         sparseCheckoutPaths: [[path: 'event-service/']]]
-                    ],
-                    userRemoteConfigs: [[
-                        url: 'https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND.git'
-                    ]]
-                ])
+                git branch: 'devops/on-integrated6sur6/ads_cicd_k8s',
+                    url: 'https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND.git'
             }
         }
 
         stage('Build & Package') {
             steps {
-                dir('event-service') {
+                dir('inscription-service') {
                     sh 'chmod +x mvnw'
                     sh './mvnw clean package -DskipTests'
                 }
@@ -36,22 +27,22 @@ pipeline {
 
         stage('Tests') {
             steps {
-                dir('event-service') {
+                dir('inscription-service') {
                     sh './mvnw test'
                 }
             }
             post {
                 always {
-                    junit 'event-service/target/surefire-reports/*.xml'
+                    junit 'inscription-service/target/surefire-reports/*.xml'
                 }
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                dir('event-service') {
+                dir('inscription-service') {
                     withSonarQubeEnv('SonarQube') {
-                        sh './mvnw sonar:sonar -Dsonar.projectKey=event-service -Dsonar.host.url=${SONAR_URL}'
+                        sh './mvnw sonar:sonar -Dsonar.projectKey=inscription-service -Dsonar.host.url=${SONAR_URL}'
                     }
                 }
             }
@@ -59,7 +50,7 @@ pipeline {
 
         stage('Docker Build & Push') {
             steps {
-                dir('event-service') {
+                dir('inscription-service') {
                     withCredentials([usernamePassword(
                         credentialsId: 'dockerhub-credentials',
                         usernameVariable: 'DOCKER_USER',
@@ -77,17 +68,17 @@ pipeline {
 
         stage('Save build info for CD') {
             steps {
-                sh 'echo ${DOCKER_TAG} > event-service-tag.txt'
-                archiveArtifacts artifacts: 'event-service-tag.txt'
+                sh 'echo ${DOCKER_TAG} > inscription-service-tag.txt'
+                archiveArtifacts artifacts: 'inscription-service-tag.txt'
             }
         }
     }
 
     post {
         success {
-            echo 'CI event-service réussi ✅'
-            build job: 'event-service-CD', wait: false
+            echo 'CI inscription-service réussi ✅'
+            build job: 'inscription-service-CD', wait: false
         }
-        failure { echo 'CI event-service échoué ❌' }
+        failure { echo 'CI inscription-service échoué ❌' }
     }
 }
