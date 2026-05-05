@@ -15,26 +15,18 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                sh 'git config --global http.postBuffer 524288000'
-                sh 'git config --global http.sslVerify false'
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: 'devops/on-integrated6sur6/ads_cicd_k8s']],
-                    extensions: [
-                        [$class: 'CloneOption',
-                         depth: 1,
-                         shallow: true,
-                         timeout: 120,
-                         noTags: true],
-                        [$class: 'SparseCheckoutPaths',
-                         sparseCheckoutPaths: [
-                             [$class: 'SparseCheckoutPath', path: 'inscription-service/']
-                         ]]
-                    ],
-                    userRemoteConfigs: [[
-                        url: 'https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND.git'
-                    ]]
-                ])
+                sh '''
+                    rm -rf inscription-service
+                    mkdir -p inscription-service
+                    cd inscription-service
+                    git init
+                    git remote add origin https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND.git
+                    git config core.sparseCheckout true
+                    echo "inscription-service/*" > .git/info/sparse-checkout
+                    git pull --depth=1 origin devops/on-integrated6sur6/ads_cicd_k8s
+                    mv inscription-service/* .
+                    rm -rf inscription-service
+                '''
             }
         }
 
