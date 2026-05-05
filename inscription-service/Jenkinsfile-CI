@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    options {
+        skipDefaultCheckout(true)
+    }
+
     environment {
         DOCKER_IMAGE = "marahmarah123/inscription-service"
         DOCKER_TAG   = "${BUILD_NUMBER}"
