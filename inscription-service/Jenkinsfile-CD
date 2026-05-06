@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    options {
+        skipDefaultCheckout(true)
+    }
+
     environment {
         DOCKER_IMAGE  = "marahmarah123/inscription-service"
         K8S_NAMESPACE = "devops"
@@ -34,7 +38,7 @@ pipeline {
                 )]) {
                     sh """
                         rm -rf prolance-helm-charts
-                        git clone https://${GIT_USER}:${GITHUB_TOKEN}@github.com/MarahMhadbhi/prolance-helm-charts.git
+                        git clone https://${GIT_USER}:\${GITHUB_TOKEN}@github.com/MarahMhadbhi/prolance-helm-charts.git
                         cd prolance-helm-charts
                         git config user.email "${GIT_EMAIL}"
                         git config user.name "${GIT_USER}"
