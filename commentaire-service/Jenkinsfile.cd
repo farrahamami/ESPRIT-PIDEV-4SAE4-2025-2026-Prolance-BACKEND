@@ -1,179 +1,91 @@
 pipeline {
     agent any
 
+    // ✅ CORRECTION 1 : IMAGE_TAG reçu comme paramètre du CI
+    // Avant : lecture de lastSuccessfulBuild → échoue si CI est UNSTABLE
+    // Après : tag injecté directement par le CI via build(..., parameters:[...])
+    parameters {
+        string(
+            name: 'IMAGE_TAG',
+            defaultValue: 'latest',
+            description: 'Tag de l\'image Docker transmis automatiquement par le CI'
+        )
+    }
+
     environment {
+        JAVA_HOME        = '/usr/lib/jvm/java-21-openjdk-amd64'
+        PATH             = "/usr/lib/jvm/java-21-openjdk-amd64/bin:${env.PATH}"
         SERVICE_NAME     = 'commentaire-service'
-        DOCKER_NAMESPACE = 'farahchbeb'
+        DOCKER_NAMESPACE = 'yesmine111'
         IMAGE_NAME       = "${DOCKER_NAMESPACE}/${SERVICE_NAME}"
         APP_PORT         = '8083'
-        CONTAINER_NAME   = 'commentaire-service-live'
-        // Adresse de Graylog — changer si Graylog tourne dans un container Docker
-        // ex: GRAYLOG_HOST = 'graylog' si le container s'appelle 'graylog'
-        GRAYLOG_HOST     = 'localhost'
-        // Adresse de Jaeger — injectée dans le container Spring Boot via -e JAEGER_HOST
-        // 'host-gateway' permet au container d'atteindre le localhost du serveur Jenkins
-        JAEGER_HOST      = 'host-gateway'
-        JAEGER_CONTAINER = 'jaeger'
+        K8S_NAMESPACE    = 'devops'
     }
 
     options {
-        timeout(time: 10, unit: 'MINUTES')
+        // ✅ CORRECTION 2 : timeout augmenté 20→30 min
+        // car initContainer + Spring Boot + MySQL prend plus de 20 min parfois
+        timeout(time: 30, unit: 'MINUTES')
         timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
     stages {
-        stage('📌 Récupérer le tag depuis le CI') {
+        stage('📥 Checkout') {
             steps {
-                copyArtifacts(
-                    projectName: 'commentaire-service-ci',
-                    filter: 'last-build.txt',
-                    selector: lastSuccessful()
-                )
+                checkout([$class: 'GitSCM',
+                    branches: [[name: '*/devops/on-integrated6sur6/ads_cicd_k8s']],
+                    extensions: [[$class: 'CloneOption', depth: 1, shallow: true]],
+                    userRemoteConfigs: [[
+                        credentialsId: 'github-credentials',
+                        url: 'https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND'
+                    ]]
+                ])
+            }
+        }
+
+        // ✅ CORRECTION 1 : tag vient du paramètre, plus de lecture fichier fragile
+        stage('🔖 Vérifier le tag image') {
+            steps {
                 script {
-                    env.IMAGE_TAG = readFile('last-build.txt').trim()
-                    echo "==> Déploiement de ${IMAGE_NAME}:${env.IMAGE_TAG}"
+                    env.IMAGE_TAG = params.IMAGE_TAG?.trim() ?: 'latest'
+                    echo "🔖 Tag utilisé    : ${env.IMAGE_TAG}"
+                    echo "🐳 Image complète : ${IMAGE_NAME}:${env.IMAGE_TAG}"
                 }
             }
         }
 
-        stage('🔐 Login DockerHub') {
+        stage('🚀 Deploy to Kubernetes') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
-                }
-            }
-        }
-
-        stage('⬇️ Pull nouvelle image') {
-            steps {
-                sh 'docker pull ${IMAGE_NAME}:${IMAGE_TAG}'
-            }
-        }
-
-        stage('🛑 Stopper ancien container') {
-            steps {
-                sh '''
-                    docker stop ${CONTAINER_NAME} 2>/dev/null || true
-                    docker rm ${CONTAINER_NAME} 2>/dev/null || true
-                '''
-            }
-        }
-
-        stage('🔍 Démarrer Jaeger si absent') {
-            steps {
-                script {
-                    // Vérifie si le container Jaeger tourne déjà
-                    // Si oui → ne fait rien (idempotent : les 3 pipelines CD peuvent tourner sans conflit)
-                    // Si non → démarre Jaeger all-in-one
-                    //   4318 → OTLP HTTP  ← reçoit les traces des 3 microservices Spring Boot
-                    //   16686 → UI web Jaeger → http://localhost:16686
-                    def running = sh(
-                        script: "docker inspect -f '{{.State.Running}}' ${JAEGER_CONTAINER} 2>/dev/null || echo 'absent'",
-                        returnStdout: true
-                    ).trim()
-
-                    if (running != 'true') {
-                        echo "⚙️  Jaeger absent — démarrage du container..."
-                        sh '''
-                            docker run -d \
-                              --name ${JAEGER_CONTAINER} \
-                              --restart unless-stopped \
-                              -p 16686:16686 \
-                              -p 4317:4317 \
-                              -p 4318:4318 \
-                              jaegertracing/all-in-one:1.55
-                            echo "⏳ Attente du démarrage Jaeger..."
-                            sleep 8
-                        '''
-                    } else {
-                        echo "✅ Jaeger déjà en cours d'exécution — aucune action nécessaire."
-                    }
-                }
-            }
-        }
-
-        stage('🚀 Démarrer nouveau container') {
-            steps {
-                sh '''
-                    docker run -d \
-                      --name ${CONTAINER_NAME} \
-                      -p ${APP_PORT}:${APP_PORT} \
-                      --restart unless-stopped \
-                      --add-host=host-gateway:host-gateway \
-                      -e GRAYLOG_HOST=${GRAYLOG_HOST} \
-                      -e JAEGER_HOST=${JAEGER_HOST} \
-                      ${IMAGE_NAME}:${IMAGE_TAG}
-                '''
-            }
-        }
-
-        stage('📡 Vérifier Jaeger reçoit les traces') {
-            steps {
-                script {
-                    // Attendre que le service démarre et émette ses premières traces
-                    sh 'sleep 15'
-
-                    // Interroger l'API Jaeger (port 16686 par défaut)
-                    // L'endpoint /api/services retourne tous les services enregistrés
+                dir('commentaire-service/k8s') {
                     sh '''
-                        curl -s http://localhost:16686/api/services \
-                          | grep -q "commentaire-service" \
-                          && echo "✅ Jaeger : commentaire-service détecté" \
-                          || echo "⚠️  Jaeger : service pas encore visible (normal au 1er boot)"
+                        sed -i "s|IMAGE_PLACEHOLDER|${IMAGE_NAME}:${IMAGE_TAG}|g" deployment.yaml
+                        kubectl apply -f mysql-deployment.yaml --validate=false
+                        kubectl apply -f deployment.yaml --validate=false
+                        kubectl apply -f service.yaml --validate=false
                     '''
                 }
             }
         }
 
-        stage('📊 Vérifier Graylog reçoit les logs') {
+        stage('✅ Vérifier le déploiement') {
             steps {
-                script {
-                    // Le logback-spring.xml envoie les logs en UDP GELF vers Graylog:12201
-                    // On vérifie ici que le container tourne et que les logs sont bien émis
-                    sh 'sleep 10'
-
-                    sh '''
-                        echo "=== Derniers logs du container ==="
-                        docker logs --tail 30 ${CONTAINER_NAME}
-
-                        echo "=== Vérification des erreurs ==="
-                        docker logs ${CONTAINER_NAME} 2>&1 | grep -i "ERROR\\|Exception\\|WARN" \
-                          && echo "⚠️  Des erreurs ont été détectées dans les logs" \
-                          || echo "✅ Aucune erreur critique dans les logs"
-
-                        echo "=== Confirmation démarrage Spring Boot ==="
-                        docker logs ${CONTAINER_NAME} 2>&1 | grep -i "Started\\|Running\\|listening\\|Tomcat started" \
-                          && echo "✅ commentaire-service démarré correctement" \
-                          || echo "⚠️  Démarrage Spring Boot non confirmé"
-                    '''
-                }
-            }
-        }
-
-        stage('✅ Vérifier que le container tourne') {
-            steps {
-                sh '''
-                    sleep 5
-                    docker ps | grep ${CONTAINER_NAME}
-                    docker logs --tail 20 ${CONTAINER_NAME}
-                '''
+                sh """
+                    kubectl rollout status deployment/${SERVICE_NAME} -n ${K8S_NAMESPACE} --timeout=300s
+                    kubectl get pods -l app=${SERVICE_NAME} -n ${K8S_NAMESPACE}
+                """
             }
         }
     }
 
     post {
         success {
-            echo "🎉 CD réussi : ${IMAGE_NAME}:${env.IMAGE_TAG} déployé sur le port ${APP_PORT}"
+            echo "✅ CD OK : ${SERVICE_NAME} déployé avec l'image ${IMAGE_NAME}:${IMAGE_TAG}"
         }
         failure {
-            echo "💥 CD échoué"
+            echo "❌ CD échoué pour ${SERVICE_NAME}."
         }
         always {
-            sh 'docker logout || true'
             cleanWs()
         }
     }

@@ -5,6 +5,8 @@ import com.esprit.publicationservice.entities.Publication;
 import com.esprit.publicationservice.entities.StatutPublication;
 import com.esprit.publicationservice.entities.TypePublication;
 import com.esprit.publicationservice.services.PublicationService;
+import com.esprit.publicationservice.dto.CreatePublicationRequest;
+import com.esprit.publicationservice.dto.UpdatePublicationRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -25,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 
 @WebMvcTest(PublicationController.class)
-@WithMockUser  // Désactive Spring Security pour tous les tests de cette classe
+@WithMockUser
 class PublicationControllerTest {
 
     @Autowired
@@ -74,7 +77,6 @@ class PublicationControllerTest {
         }
     }
 
-
     @Nested
     @DisplayName("GET /api/publications/admin/all")
     class GetAllAdminTests {
@@ -93,7 +95,6 @@ class PublicationControllerTest {
                     .andExpect(jsonPath("$.length()").value(2));
         }
     }
-
 
     @Nested
     @DisplayName("GET /api/publications/{id}")
@@ -122,7 +123,6 @@ class PublicationControllerTest {
         }
     }
 
-
     @Nested
     @DisplayName("GET /api/publications/user/{userId}")
     class GetByUserTests {
@@ -138,7 +138,6 @@ class PublicationControllerTest {
                     .andExpect(jsonPath("$[0].userId").value(5));
         }
     }
-
 
     @Nested
     @DisplayName("GET /api/publications/user/{userId}/archived")
@@ -156,7 +155,6 @@ class PublicationControllerTest {
                     .andExpect(jsonPath("$[0].statut").value("ARCHIVED"));
         }
     }
-
 
     @Nested
     @DisplayName("GET /api/publications/user/{userId}/block-status")
@@ -187,7 +185,6 @@ class PublicationControllerTest {
         }
     }
 
-
     @Nested
     @DisplayName("GET /api/publications/admin/blocked-users")
     class GetBlockedUsersTests {
@@ -205,6 +202,34 @@ class PublicationControllerTest {
         }
     }
 
+    @Nested
+    @DisplayName("GET /api/publications/type/{type}")
+    class GetByTypeTests {
+
+        @Test
+        @DisplayName("retourne 200 avec les publications du type ARTICLE")
+        void returns200WithArticlePublications() throws Exception {
+            Publication p = makePublication(1, 10);
+            p.setType(TypePublication.ARTICLE);
+            when(publicationService.getPublicationsByType(TypePublication.ARTICLE))
+                    .thenReturn(List.of(p));
+
+            mockMvc.perform(get("/api/publications/type/ARTICLE"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].type").value("ARTICLE"));
+        }
+
+        @Test
+        @DisplayName("retourne 200 avec liste vide si aucun REVIEW")
+        void returns200WithEmptyListForReview() throws Exception {
+            when(publicationService.getPublicationsByType(TypePublication.REVIEW))
+                    .thenReturn(List.of());
+
+            mockMvc.perform(get("/api/publications/type/REVIEW"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$").isEmpty());
+        }
+    }
 
     @Nested
     @DisplayName("POST /api/publications/{id}/signaler")
@@ -261,7 +286,6 @@ class PublicationControllerTest {
         }
     }
 
-
     @Nested
     @DisplayName("POST /api/publications/admin/users/{userId}/reactiver-compte")
     class ReactiverCompteTests {
@@ -289,6 +313,137 @@ class PublicationControllerTest {
         }
     }
 
+    @Nested
+    @DisplayName("POST /api/publications")
+    class CreatePublicationTests {
+
+        @Test
+        @DisplayName("retourne 201 lors d'une création réussie")
+        void returns201OnSuccess() throws Exception {
+            Publication p = makePublication(1, 10);
+            when(publicationService.createPublication(any(CreatePublicationRequest.class)))
+                    .thenReturn(p);
+
+            mockMvc.perform(multipart("/api/publications")
+                            .param("titre", "Mon titre")
+                            .param("contenue", "Mon contenu")
+                            .param("type", "ARTICLE")
+                            .param("userId", "10")
+                            .with(csrf()))
+                    .andExpect(status().isCreated());
+        }
+
+        @Test
+        @DisplayName("retourne 403 si l'utilisateur est bloqué (IllegalStateException)")
+        void returns403WhenUserBlocked() throws Exception {
+            when(publicationService.createPublication(any(CreatePublicationRequest.class)))
+                    .thenThrow(new IllegalStateException("BLOCKED"));
+
+            mockMvc.perform(multipart("/api/publications")
+                            .param("titre", "Mon titre")
+                            .param("contenue", "Mon contenu")
+                            .param("type", "ARTICLE")
+                            .param("userId", "10")
+                            .with(csrf()))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("retourne 400 si l'argument est invalide (IllegalArgumentException)")
+        void returns400WhenIllegalArgument() throws Exception {
+            when(publicationService.createPublication(any(CreatePublicationRequest.class)))
+                    .thenThrow(new IllegalArgumentException("No images/PDFs allowed for QUESTION type."));
+
+            mockMvc.perform(multipart("/api/publications")
+                            .param("titre", "Mon titre")
+                            .param("contenue", "Mon contenu")
+                            .param("type", "QUESTION")
+                            .param("userId", "10")
+                            .with(csrf()))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("retourne 500 si une exception générique survient")
+        void returns500OnGenericException() throws Exception {
+            when(publicationService.createPublication(any(CreatePublicationRequest.class)))
+                    .thenThrow(new RuntimeException("Unexpected error"));
+
+            mockMvc.perform(multipart("/api/publications")
+                            .param("titre", "Mon titre")
+                            .param("contenue", "Mon contenu")
+                            .param("type", "ARTICLE")
+                            .param("userId", "10")
+                            .with(csrf()))
+                    .andExpect(status().isInternalServerError());
+        }
+
+        @Test
+        @DisplayName("retourne 201 avec upload d'image")
+        void returns201WithImageUpload() throws Exception {
+            Publication p = makePublication(2, 10);
+            MockMultipartFile image = new MockMultipartFile(
+                    "images", "photo.jpg", MediaType.IMAGE_JPEG_VALUE, new byte[]{1, 2, 3});
+
+            when(publicationService.createPublication(any(CreatePublicationRequest.class)))
+                    .thenReturn(p);
+
+            mockMvc.perform(multipart("/api/publications")
+                            .file(image)
+                            .param("titre", "Titre avec image")
+                            .param("contenue", "Contenu")
+                            .param("type", "ARTICLE")
+                            .param("userId", "10")
+                            .with(csrf()))
+                    .andExpect(status().isCreated());
+        }
+    }
+
+    @Nested
+    @DisplayName("PUT /api/publications/{id}")
+    class UpdatePublicationTests {
+
+        @Test
+        @DisplayName("retourne 200 lors d'une mise à jour réussie")
+        void returns200OnSuccess() throws Exception {
+            Publication p = makePublication(1, 10);
+            when(publicationService.updatePublication(any(UpdatePublicationRequest.class)))
+                    .thenReturn(p);
+
+            mockMvc.perform(multipart("/api/publications/1")
+                            .with(req -> { req.setMethod("PUT"); return req; })
+                            .param("userId", "10")
+                            .param("titre", "Nouveau titre")
+                            .with(csrf()))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("retourne 400 si argument invalide")
+        void returns400WhenIllegalArgument() throws Exception {
+            when(publicationService.updatePublication(any(UpdatePublicationRequest.class)))
+                    .thenThrow(new IllegalArgumentException("Invalid"));
+
+            mockMvc.perform(multipart("/api/publications/1")
+                            .with(req -> { req.setMethod("PUT"); return req; })
+                            .param("userId", "10")
+                            .with(csrf()))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("retourne 403 si non propriétaire (RuntimeException)")
+        void returns403WhenNotOwner() throws Exception {
+            when(publicationService.updatePublication(any(UpdatePublicationRequest.class)))
+                    .thenThrow(new RuntimeException("Not authorized"));
+
+            mockMvc.perform(multipart("/api/publications/1")
+                            .with(req -> { req.setMethod("PUT"); return req; })
+                            .param("userId", "99")
+                            .with(csrf()))
+                    .andExpect(status().isForbidden());
+        }
+    }
 
     @Nested
     @DisplayName("DELETE /api/publications/{id}")
@@ -319,7 +474,6 @@ class PublicationControllerTest {
         }
     }
 
-
     @Nested
     @DisplayName("DELETE /api/publications/admin/{id}")
     class AdminDeletePublicationTests {
@@ -344,36 +498,6 @@ class PublicationControllerTest {
             mockMvc.perform(delete("/api/publications/admin/99")
                             .with(csrf()))
                     .andExpect(status().isNotFound());
-        }
-    }
-
-
-    @Nested
-    @DisplayName("GET /api/publications/type/{type}")
-    class GetByTypeTests {
-
-        @Test
-        @DisplayName("retourne 200 avec les publications du type ARTICLE")
-        void returns200WithArticlePublications() throws Exception {
-            Publication p = makePublication(1, 10);
-            p.setType(TypePublication.ARTICLE);
-            when(publicationService.getPublicationsByType(TypePublication.ARTICLE))
-                    .thenReturn(List.of(p));
-
-            mockMvc.perform(get("/api/publications/type/ARTICLE"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].type").value("ARTICLE"));
-        }
-
-        @Test
-        @DisplayName("retourne 200 avec liste vide si aucun REVIEW")
-        void returns200WithEmptyListForReview() throws Exception {
-            when(publicationService.getPublicationsByType(TypePublication.REVIEW))
-                    .thenReturn(List.of());
-
-            mockMvc.perform(get("/api/publications/type/REVIEW"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$").isEmpty());
         }
     }
 }

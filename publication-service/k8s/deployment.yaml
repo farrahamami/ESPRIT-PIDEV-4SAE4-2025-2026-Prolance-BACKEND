@@ -1,65 +1,62 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: reaction-service
+  name: publication-service
   namespace: devops
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: reaction-service
+      app: publication-service
   template:
     metadata:
       labels:
-        app: reaction-service
+        app: publication-service
     spec:
+      automountServiceAccountToken: false   # fix: kubernetes:S6865
       containers:
-        - name: reaction-service
-          image: farahchbeb/reaction-service:latest
+        - name: publication-service
+          image: yesmine111/publication-service:latest  # fix: kubernetes:S6596
           ports:
-            - containerPort: 8084
+            - containerPort: 8082
           env:
             - name: SPRING_DATASOURCE_URL
-              value: "jdbc:mysql://mysql-service-reaction:3306/pidev_reaction?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+              value: "jdbc:mysql://mysql-service-publication:3306/pidev_publication?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
             - name: SPRING_DATASOURCE_USERNAME
               value: "root"
             - name: SPRING_DATASOURCE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: mysql-secret-reaction
+                  name: mysql-secret-publication
                   key: mysql-root-password
             - name: SPRING_DATASOURCE_DRIVER_CLASS_NAME
               value: "com.mysql.cj.jdbc.Driver"
             - name: SERVER_PORT
-              value: "8084"
+              value: "8082"
             - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
               value: "http://eureka-service:8761/eureka/"
             - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
               value: "true"
+            # ===== JAEGER =====
+            - name: JAEGER_HOST
+              value: "jaeger-service"
+            # ==================
+          resources:                        # fix: kubernetes:S6892 / S6873 / S6864 / S6897
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
           readinessProbe:
             httpGet:
               path: /actuator/health
-              port: 8084
+              port: 8082
             initialDelaySeconds: 45
             periodSeconds: 15
           livenessProbe:
             httpGet:
               path: /actuator/health
-              port: 8084
+              port: 8082
             initialDelaySeconds: 60
             periodSeconds: 20
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: spring-service
-  namespace: devops
-spec:
-  selector:
-    app: reaction-service
-  ports:
-    - protocol: TCP
-      port: 8084
-      targetPort: 8084
-      nodePort: 32084
-  type: NodePort

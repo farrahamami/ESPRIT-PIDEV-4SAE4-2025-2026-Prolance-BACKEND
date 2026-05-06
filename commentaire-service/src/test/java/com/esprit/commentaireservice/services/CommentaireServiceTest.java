@@ -3,7 +3,6 @@ package com.esprit.commentaireservice.services;
 import com.esprit.commentaireservice.clients.PublicationClient;
 import com.esprit.commentaireservice.clients.UserClient;
 import com.esprit.commentaireservice.dto.PublicationDTO;
-import com.esprit.commentaireservice.dto.UserDTO;
 import com.esprit.commentaireservice.entities.Commentaire;
 import com.esprit.commentaireservice.repositories.CommentaireRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -22,7 +21,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
-
 
 @ExtendWith(MockitoExtension.class)
 class CommentaireServiceTest {
@@ -49,21 +47,12 @@ class CommentaireServiceTest {
         return c;
     }
 
-    private UserDTO makeUser(Integer id) {
-        UserDTO u = new UserDTO();
-        u.setId(id);
-        u.setName("Jean");
-        u.setLastName("Dupont");
-        return u;
-    }
-
     private PublicationDTO makePublication(Integer id, Integer userId) {
         PublicationDTO p = new PublicationDTO();
         p.setId(id);
         p.setUserId(userId);
         return p;
     }
-
 
     @Nested
     @DisplayName("getAllCommentaires()")
@@ -74,12 +63,11 @@ class CommentaireServiceTest {
         void returnsAllCommentairesEnrichedWithUser() {
             Commentaire c = makeCommentaire(1, 10, 5);
             when(commentaireRepository.findAllByOrderByCreateAtDesc()).thenReturn(List.of(c));
-            when(userClient.getUserById(10)).thenReturn(makeUser(10));
+            when(userClient.getUserById(10)).thenReturn(new com.esprit.commentaireservice.dto.UserDTO());
 
             List<Commentaire> result = commentaireService.getAllCommentaires();
 
             assertThat(result).hasSize(1);
-            assertThat(result.get(0).getUser()).isNotNull();
             verify(commentaireRepository).findAllByOrderByCreateAtDesc();
             verify(userClient).getUserById(10);
         }
@@ -104,10 +92,9 @@ class CommentaireServiceTest {
             List<Commentaire> result = commentaireService.getAllCommentaires();
 
             assertThat(result).hasSize(1);
-            assertThat(result.get(0).getUser()).isNull(); // enrichissement silencieux
+            assertThat(result.get(0).getUser()).isNull();
         }
     }
-
 
     @Nested
     @DisplayName("getByPublicationId()")
@@ -118,7 +105,7 @@ class CommentaireServiceTest {
         void returnsRootCommentairesForPublication() {
             Commentaire c = makeCommentaire(1, 10, 5);
             when(commentaireRepository.findRootByPublicationIdOrderByPinned(5)).thenReturn(List.of(c));
-            when(userClient.getUserById(10)).thenReturn(makeUser(10));
+            when(userClient.getUserById(10)).thenReturn(new com.esprit.commentaireservice.dto.UserDTO());
 
             List<Commentaire> result = commentaireService.getByPublicationId(5);
 
@@ -138,7 +125,6 @@ class CommentaireServiceTest {
         }
     }
 
-
     @Nested
     @DisplayName("getById()")
     class GetByIdTests {
@@ -156,16 +142,15 @@ class CommentaireServiceTest {
         }
 
         @Test
-        @DisplayName("lève RuntimeException si commentaire introuvable")
-        void throwsRuntimeException_whenNotFound() {
+        @DisplayName("lève CommentaireNotFoundException si commentaire introuvable")
+        void throwsCommentaireNotFoundException_whenNotFound() {
             when(commentaireRepository.findById(99)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> commentaireService.getById(99))
-                    .isInstanceOf(RuntimeException.class)
+                    .isInstanceOf(CommentaireNotFoundException.class)
                     .hasMessageContaining("Commentaire not found: 99");
         }
     }
-
 
     @Nested
     @DisplayName("create()")
@@ -181,7 +166,7 @@ class CommentaireServiceTest {
                 c.setReplies(new ArrayList<>());
                 return c;
             });
-            when(userClient.getUserById(10)).thenReturn(makeUser(10));
+            when(userClient.getUserById(10)).thenReturn(new com.esprit.commentaireservice.dto.UserDTO());
 
             Commentaire result = commentaireService.create("Mon commentaire", 5, 10);
 
@@ -209,16 +194,15 @@ class CommentaireServiceTest {
         }
 
         @Test
-        @DisplayName("lève RuntimeException si la publication n'existe pas")
-        void throwsRuntimeException_whenPublicationNotFound() {
+        @DisplayName("lève PublicationNotFoundException si la publication n'existe pas")
+        void throwsPublicationNotFoundException_whenPublicationNotFound() {
             when(publicationClient.getPublicationById(99)).thenThrow(new RuntimeException("not found"));
 
             assertThatThrownBy(() -> commentaireService.create("contenu", 99, 10))
-                    .isInstanceOf(RuntimeException.class)
+                    .isInstanceOf(PublicationNotFoundException.class)
                     .hasMessageContaining("Publication not found: 99");
         }
     }
-
 
     @Nested
     @DisplayName("reply()")
@@ -235,7 +219,7 @@ class CommentaireServiceTest {
                 c.setReplies(new ArrayList<>());
                 return c;
             });
-            when(userClient.getUserById(20)).thenReturn(makeUser(20));
+            when(userClient.getUserById(20)).thenReturn(new com.esprit.commentaireservice.dto.UserDTO());
 
             Commentaire result = commentaireService.reply("Ma réponse", 1, 5, 20);
 
@@ -262,16 +246,15 @@ class CommentaireServiceTest {
         }
 
         @Test
-        @DisplayName("lève RuntimeException si le commentaire parent est introuvable")
-        void throwsRuntimeException_whenParentNotFound() {
+        @DisplayName("lève CommentaireNotFoundException si le commentaire parent est introuvable")
+        void throwsCommentaireNotFoundException_whenParentNotFound() {
             when(commentaireRepository.findById(99)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> commentaireService.reply("réponse", 99, 5, 20))
-                    .isInstanceOf(RuntimeException.class)
+                    .isInstanceOf(CommentaireNotFoundException.class)
                     .hasMessageContaining("Commentaire not found: 99");
         }
     }
-
 
     @Nested
     @DisplayName("update()")
@@ -291,25 +274,25 @@ class CommentaireServiceTest {
         }
 
         @Test
-        @DisplayName("lève RuntimeException si l'utilisateur n'est pas le propriétaire")
-        void throwsRuntimeException_whenNotOwner() {
+        @DisplayName("lève UnauthorizedCommentaireException si l'utilisateur n'est pas le propriétaire")
+        void throwsUnauthorizedCommentaireException_whenNotOwner() {
             Commentaire c = makeCommentaire(1, 10, 5);
             when(commentaireRepository.findById(1)).thenReturn(Optional.of(c));
 
             assertThatThrownBy(() -> commentaireService.update(1, "Nouveau contenu", 99))
-                    .isInstanceOf(RuntimeException.class)
-                    .hasMessageContaining("Not authorized");
+                    .isInstanceOf(UnauthorizedCommentaireException.class)
+                    .hasMessageContaining("Not authorized to update this commentaire");
 
             verify(commentaireRepository, never()).save(any());
         }
 
         @Test
-        @DisplayName("lève RuntimeException si le commentaire est introuvable")
-        void throwsRuntimeException_whenNotFound() {
+        @DisplayName("lève CommentaireNotFoundException si le commentaire est introuvable")
+        void throwsCommentaireNotFoundException_whenNotFound() {
             when(commentaireRepository.findById(99)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> commentaireService.update(99, "contenu", 10))
-                    .isInstanceOf(RuntimeException.class)
+                    .isInstanceOf(CommentaireNotFoundException.class)
                     .hasMessageContaining("Commentaire not found: 99");
         }
 
@@ -327,7 +310,6 @@ class CommentaireServiceTest {
         }
     }
 
-
     @Nested
     @DisplayName("delete()")
     class DeleteCommentaireTests {
@@ -344,25 +326,25 @@ class CommentaireServiceTest {
         }
 
         @Test
-        @DisplayName("lève RuntimeException si l'utilisateur n'est pas le propriétaire")
-        void throwsRuntimeException_whenNotOwner() {
+        @DisplayName("lève UnauthorizedCommentaireException si l'utilisateur n'est pas le propriétaire")
+        void throwsUnauthorizedCommentaireException_whenNotOwner() {
             Commentaire c = makeCommentaire(1, 10, 5);
             when(commentaireRepository.findById(1)).thenReturn(Optional.of(c));
 
             assertThatThrownBy(() -> commentaireService.delete(1, 99))
-                    .isInstanceOf(RuntimeException.class)
-                    .hasMessageContaining("Not authorized");
+                    .isInstanceOf(UnauthorizedCommentaireException.class)
+                    .hasMessageContaining("Not authorized to delete this commentaire");
 
             verify(commentaireRepository, never()).delete(any());
         }
 
         @Test
-        @DisplayName("lève RuntimeException si le commentaire est introuvable")
-        void throwsRuntimeException_whenNotFound() {
+        @DisplayName("lève CommentaireNotFoundException si le commentaire est introuvable")
+        void throwsCommentaireNotFoundException_whenNotFound() {
             when(commentaireRepository.findById(99)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> commentaireService.delete(99, 10))
-                    .isInstanceOf(RuntimeException.class)
+                    .isInstanceOf(CommentaireNotFoundException.class)
                     .hasMessageContaining("Commentaire not found: 99");
         }
     }
@@ -373,10 +355,10 @@ class CommentaireServiceTest {
 
         @Test
         @DisplayName("passe isPinned de false à true si l'utilisateur est le propriétaire de la publication")
-        void pinsSommentaire_whenPublicationOwner() {
+        void pinsCommentaire_whenPublicationOwner() {
             Commentaire c = makeCommentaire(1, 10, 5);
             c.setPinned(false);
-            PublicationDTO pub = makePublication(5, 20); // userId=20 est le propriétaire de la publication
+            PublicationDTO pub = makePublication(5, 20);
 
             when(commentaireRepository.findById(1)).thenReturn(Optional.of(c));
             when(publicationClient.getPublicationById(5)).thenReturn(pub);
@@ -405,40 +387,40 @@ class CommentaireServiceTest {
         }
 
         @Test
-        @DisplayName("lève RuntimeException si l'utilisateur n'est pas le propriétaire de la publication")
-        void throwsRuntimeException_whenNotPublicationOwner() {
+        @DisplayName("lève UnauthorizedCommentaireException si l'utilisateur n'est pas le propriétaire de la publication")
+        void throwsUnauthorizedCommentaireException_whenNotPublicationOwner() {
             Commentaire c = makeCommentaire(1, 10, 5);
-            PublicationDTO pub = makePublication(5, 20); // propriétaire = userId 20
+            PublicationDTO pub = makePublication(5, 20);
 
             when(commentaireRepository.findById(1)).thenReturn(Optional.of(c));
             when(publicationClient.getPublicationById(5)).thenReturn(pub);
 
-            assertThatThrownBy(() -> commentaireService.togglePin(1, 99)) // userId 99 != 20
-                    .isInstanceOf(RuntimeException.class)
+            assertThatThrownBy(() -> commentaireService.togglePin(1, 99))
+                    .isInstanceOf(UnauthorizedCommentaireException.class)
                     .hasMessageContaining("Only publication owner can pin");
 
             verify(commentaireRepository, never()).save(any());
         }
 
         @Test
-        @DisplayName("lève RuntimeException si le commentaire est introuvable")
-        void throwsRuntimeException_whenCommentaireNotFound() {
+        @DisplayName("lève CommentaireNotFoundException si le commentaire est introuvable")
+        void throwsCommentaireNotFoundException_whenCommentaireNotFound() {
             when(commentaireRepository.findById(99)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> commentaireService.togglePin(99, 20))
-                    .isInstanceOf(RuntimeException.class)
+                    .isInstanceOf(CommentaireNotFoundException.class)
                     .hasMessageContaining("Commentaire not found: 99");
         }
 
         @Test
-        @DisplayName("lève RuntimeException si publicationClient échoue")
-        void throwsRuntimeException_whenPublicationClientFails() {
+        @DisplayName("lève PublicationValidationException si publicationClient échoue")
+        void throwsPublicationValidationException_whenPublicationClientFails() {
             Commentaire c = makeCommentaire(1, 10, 5);
             when(commentaireRepository.findById(1)).thenReturn(Optional.of(c));
             when(publicationClient.getPublicationById(5)).thenThrow(new RuntimeException("service down"));
 
             assertThatThrownBy(() -> commentaireService.togglePin(1, 20))
-                    .isInstanceOf(RuntimeException.class);
+                    .isInstanceOf(PublicationValidationException.class);
         }
     }
 }

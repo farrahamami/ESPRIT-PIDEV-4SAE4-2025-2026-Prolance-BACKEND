@@ -12,7 +12,6 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-
 @DataJpaTest
 @TestPropertySource(properties = {
         "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MySQL;NON_KEYWORDS=VALUE",
@@ -48,7 +47,6 @@ class CommentaireRepositoryTest {
         return repository.saveAndFlush(c);
     }
 
-
     @Nested
     @DisplayName("findByPublicationId()")
     class FindByPublicationIdTests {
@@ -58,21 +56,22 @@ class CommentaireRepositoryTest {
         void returnsOnlyCommentairesForPublication() {
             saveRoot(1, 10);
             saveRoot(2, 10);
-            saveRoot(3, 20); // autre publication
+            saveRoot(3, 20);
 
             List<Commentaire> result = repository.findByPublicationId(10);
 
-            assertThat(result).hasSize(2);
-            assertThat(result).allMatch(c -> c.getPublicationId().equals(10));
+            assertThat(result)
+                    .hasSize(2)
+                    .allMatch(c -> c.getPublicationId().equals(10));
         }
 
         @Test
         @DisplayName("retourne liste vide si aucun commentaire pour cette publication")
         void returnsEmptyList_whenNoCommentairesForPublication() {
-            assertThat(repository.findByPublicationId(999)).isEmpty();
+            List<Commentaire> result = repository.findByPublicationId(999);
+            assertThat(result).isEmpty();
         }
     }
-
 
     @Nested
     @DisplayName("findAllByOrderByCreateAtDesc()")
@@ -93,10 +92,10 @@ class CommentaireRepositoryTest {
         @Test
         @DisplayName("retourne liste vide si aucun commentaire")
         void returnsEmptyList_whenNoCommentaires() {
-            assertThat(repository.findAllByOrderByCreateAtDesc()).isEmpty();
+            List<Commentaire> result = repository.findAllByOrderByCreateAtDesc();
+            assertThat(result).isEmpty();
         }
     }
-
 
     @Nested
     @DisplayName("findRootByPublicationIdOrderByPinned()")
@@ -106,12 +105,13 @@ class CommentaireRepositoryTest {
         @DisplayName("retourne uniquement les commentaires racines (sans parent)")
         void returnsOnlyRootCommentaires() {
             Commentaire root = saveRoot(1, 10);
-            saveReply(2, 10, root); // réponse → ne doit pas apparaître
+            saveReply(2, 10, root);
 
             List<Commentaire> result = repository.findRootByPublicationIdOrderByPinned(10);
 
-            assertThat(result).hasSize(1);
-            assertThat(result.get(0).getParent()).isNull();
+            assertThat(result)
+                    .hasSize(1)
+                    .allMatch(c -> c.getParent() == null);
         }
 
         @Test
@@ -127,27 +127,32 @@ class CommentaireRepositoryTest {
 
             List<Commentaire> result = repository.findRootByPublicationIdOrderByPinned(10);
 
-            assertThat(result).hasSize(2);
-            assertThat(result.get(0).isPinned()).isTrue();
-            assertThat(result.get(1).isPinned()).isFalse();
+            assertThat(result)
+                    .hasSize(2)
+                    .satisfies(list -> {
+                        assertThat(list.get(0).isPinned()).isTrue();
+                        assertThat(list.get(1).isPinned()).isFalse();
+                    });
         }
 
         @Test
         @DisplayName("ignore les commentaires des autres publications")
         void ignoresCommentairesFromOtherPublications() {
             saveRoot(1, 10);
-            saveRoot(2, 20); // autre publication
+            saveRoot(2, 20);
 
             List<Commentaire> result = repository.findRootByPublicationIdOrderByPinned(10);
 
-            assertThat(result).hasSize(1);
-            assertThat(result.get(0).getPublicationId()).isEqualTo(10);
+            assertThat(result)
+                    .hasSize(1)
+                    .allMatch(c -> c.getPublicationId().equals(10));
         }
 
         @Test
         @DisplayName("retourne liste vide si aucun commentaire racine pour cette publication")
         void returnsEmptyList_whenNoRootCommentaires() {
-            assertThat(repository.findRootByPublicationIdOrderByPinned(999)).isEmpty();
+            List<Commentaire> result = repository.findRootByPublicationIdOrderByPinned(999);
+            assertThat(result).isEmpty();
         }
     }
 
@@ -160,7 +165,9 @@ class CommentaireRepositoryTest {
         void savePersistsCommentaireAndGeneratesId() {
             Commentaire saved = saveRoot(1, 10);
 
-            assertThat(saved.getId()).isNotNull().isPositive();
+            assertThat(saved.getId())
+                    .isNotNull()
+                    .isPositive();
         }
 
         @Test

@@ -1,0 +1,21 @@
+replicaCount: 1
+
+image:
+  repository: marahmarah123/inscription-service
+  tag: "latest"
+  pullPolicy: Always
+
+service:
+  type: NodePort
+  port: 8097
+  nodePort: 30098
+
+namespace: devops
+
+env:
+  datasourceUrl: "jdbc:mysql://inscription-mysql.devops.svc.cluster.local:3306/pidev_inscriptions?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+  datasourceUsername: "root"
+
+secret:
+  name: inscription-mysql-secret
+  passwordKey: mysql-root-password

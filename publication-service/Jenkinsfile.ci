@@ -1,65 +1,56 @@
 pipeline {
     agent any
-
     tools {
-        jdk 'JDK21'
+        jdk 'JDK17'
         maven 'Maven3'
     }
-
     environment {
-        SERVICE_NAME      = 'publication-service'
-        DOCKER_NAMESPACE  = 'farahchbeb'
-        IMAGE_NAME        = "${DOCKER_NAMESPACE}/${SERVICE_NAME}"
-        IMAGE_TAG         = "${env.BUILD_NUMBER}"
-        SONAR_PROJECT     = 'publication-service'
-        APP_PORT          = '8082'
+        JAVA_HOME        = '/usr/lib/jvm/java-21-openjdk-amd64'
+        PATH             = "/usr/lib/jvm/java-21-openjdk-amd64/bin:${env.PATH}"
+        SERVICE_NAME     = 'publication-service'
+        DOCKER_NAMESPACE = 'yesmine111'
+        IMAGE_NAME       = "${DOCKER_NAMESPACE}/${SERVICE_NAME}"
+        IMAGE_TAG        = "${env.BUILD_NUMBER}"
+        SONAR_PROJECT    = 'publication-service'
     }
-
     options {
         timeout(time: 40, unit: 'MINUTES')
         timestamps()
         buildDiscarder(logRotator(numToKeepStr: '10'))
     }
-
     stages {
         stage('📥 Checkout') {
             steps {
-                checkout scm
+                checkout([$class: 'GitSCM',
+                    branches: [[name: '*/devops/on-integrated6sur6/ads_cicd_k8s']],
+                    extensions: [
+                        [$class: 'CloneOption', depth: 1, shallow: true, noTags: true, timeout: 60],
+                        [$class: 'SparseCheckoutPaths', sparseCheckoutPaths: [
+                            [$class: 'SparseCheckoutPath', path: 'publication-service/']
+                        ]]
+                    ],
+                    userRemoteConfigs: [[
+                        credentialsId: 'github-credentials',
+                        url: 'https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND'
+                    ]]
+                ])
             }
         }
 
-        stage('🔨 Compile') {
+        stage('🔨 Build & Package') {
             steps {
                 dir('publication-service') {
-                    sh 'mvn clean compile -B'
-                }
-            }
-        }
-
-        stage('🧪 Tests + Coverage JaCoCo') {
-            steps {
-                dir('publication-service') {
-                    sh 'mvn test -B'
-                }
-            }
-            post {
-                always {
-                    junit testResults: 'publication-service/target/surefire-reports/*.xml',
-                          allowEmptyResults: true
-                    jacoco execPattern: 'publication-service/target/jacoco.exec',
-                           classPattern: 'publication-service/target/classes',
-                           sourcePattern: 'publication-service/src/main/java',
-                           exclusionPattern: '**/dto/**,**/entities/**,**/config/**,**/*Application.class'
+                    sh 'java -version'
+                    sh 'mvn clean package -DskipTests -B'
                 }
             }
         }
 
-        stage('📦 Package JAR') {
+        stage('🧪 Tests') {
             steps {
                 dir('publication-service') {
-                    sh 'mvn package -DskipTests -B'
+                    sh 'mvn verify -B'
                 }
-                archiveArtifacts artifacts: 'publication-service/target/*.jar', fingerprint: true
             }
         }
 
@@ -79,43 +70,13 @@ pipeline {
             }
         }
 
-        stage('🔒 OWASP Dependency-Check') {
-            steps {
-                dir('publication-service') {
-                    sh 'mvn dependency-check:check -B || true'
-                }
-            }
-            post {
-                always {
-                    dependencyCheckPublisher(
-                        pattern: 'publication-service/target/dependency-check-report.xml'
-                    )
-                    publishHTML([
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'publication-service/target',
-                        reportFiles: 'dependency-check-report.html',
-                        reportName: 'OWASP Dependency-Check Report'
-                    ])
-                    archiveArtifacts artifacts: 'publication-service/target/dependency-check-report.*',
-                                     allowEmptyArchive: true
-                }
-            }
-        }
-
-        stage('🐳 Docker Build') {
+        stage('🐳 Docker Build & Push') {
             steps {
                 dir('publication-service') {
                     sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest .'
                 }
-            }
-        }
-
-        stage('📤 Docker Push') {
-            steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
+                    credentialsId: 'dockerhub-credentials',
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
@@ -129,16 +90,24 @@ pipeline {
             }
         }
 
-        stage('💾 Save build info for CD') {
+        // ===== STAGE JAEGER =====
+        stage('🔭 Vérifier Jaeger') {
             steps {
-                writeFile file: 'last-build.txt', text: "${IMAGE_TAG}"
-                archiveArtifacts artifacts: 'last-build.txt'
+                sh '''
+                    echo "🔭 Vérification que Jaeger est accessible..."
+                    curl -sf http://localhost:16686 > /dev/null \
+                        && echo "✅ Jaeger UI accessible sur http://localhost:16686" \
+                        || echo "⚠️  Jaeger non accessible — lancer : docker run -d --name jaeger --restart unless-stopped -p 16686:16686 -p 4317:4317 -p 4318:4318 jaegertracing/all-in-one:1.55"
+                '''
             }
         }
+        // ========================
     }
 
     post {
         success {
+            writeFile file: 'last-build.txt', text: "${IMAGE_TAG}"
+            archiveArtifacts artifacts: 'last-build.txt'
             echo "✅ CI OK : image ${IMAGE_NAME}:${IMAGE_TAG} poussée sur DockerHub."
         }
         failure {

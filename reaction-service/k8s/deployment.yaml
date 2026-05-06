@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reaction-service
+  namespace: devops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reaction-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: reaction-service
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+        - name: wait-for-mysql
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for MySQL to be ready..."
+              until nc -z mysql-service-reaction 3306; do
+                sleep 2
+              done
+              echo "MySQL is ready!"
+      containers:
+        - name: reaction-service
+          image: IMAGE_PLACEHOLDER
+          ports:
+            - containerPort: 8084
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:mysql://mysql-service-reaction:3306/pidev_reaction?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: "root"
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret-reaction
+                  key: mysql-root-password
+            - name: SPRING_DATASOURCE_DRIVER_CLASS_NAME
+              value: "com.mysql.cj.jdbc.Driver"
+            - name: SERVER_PORT
+              value: "8084"
+            - name: EUREKA_CLIENT_ENABLED
+              value: "false"
+            - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+              value: "http://eureka-service:8761/eureka/"
+            - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
+              value: "true"
+            - name: OTEL_SDK_DISABLED
+              value: "true"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              memory: "512Mi"
+              cpu: "200m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8084
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8084
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 10

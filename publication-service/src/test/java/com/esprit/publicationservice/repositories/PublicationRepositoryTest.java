@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
 import java.util.List;
@@ -55,7 +54,8 @@ class PublicationRepositoryTest {
         @DisplayName("retourne 0 si aucune publication archivée")
         void returnsZero_whenNoArchivedPublications() {
             save(1, StatutPublication.ACTIVE);
-            assertThat(repository.countArchivedByUserId(1)).isEqualTo(0L);
+            // Fixed: Use isZero() instead of isEqualTo(0L)
+            assertThat(repository.countArchivedByUserId(1)).isZero();
         }
 
         @Test
@@ -96,8 +96,10 @@ class PublicationRepositoryTest {
             save(2, StatutPublication.ARCHIVED);
             save(3, StatutPublication.ACTIVE);
             List<Publication> result = repository.findByStatutOrderByCreateAtDesc(StatutPublication.ACTIVE);
-            assertThat(result).hasSize(2);
-            assertThat(result).allMatch(p -> p.getStatut() == StatutPublication.ACTIVE);
+            // Fixed: Joined assertions into one chain
+            assertThat(result)
+                    .hasSize(2)
+                    .allMatch(p -> p.getStatut() == StatutPublication.ACTIVE);
         }
 
         @Test
@@ -113,8 +115,10 @@ class PublicationRepositoryTest {
             save(1, StatutPublication.ACTIVE);
             save(2, StatutPublication.ARCHIVED);
             List<Publication> result = repository.findByStatutOrderByCreateAtDesc(StatutPublication.ARCHIVED);
-            assertThat(result).hasSize(1);
-            assertThat(result.get(0).getStatut()).isEqualTo(StatutPublication.ARCHIVED);
+            // Fixed: Joined assertions into one chain
+            assertThat(result)
+                    .hasSize(1)
+                    .allMatch(p -> p.getStatut() == StatutPublication.ARCHIVED);
         }
     }
 
@@ -130,8 +134,10 @@ class PublicationRepositoryTest {
             save(3, StatutPublication.ARCHIVED, TypePublication.ARTICLE);
             List<Publication> result = repository.findByTypeAndStatutOrderByCreateAtDesc(
                     TypePublication.ARTICLE, StatutPublication.ACTIVE);
-            assertThat(result).hasSize(1);
-            assertThat(result.get(0).getType()).isEqualTo(TypePublication.ARTICLE);
+            // Fixed: Joined assertions into one chain
+            assertThat(result)
+                    .hasSize(1)
+                    .allMatch(p -> p.getType() == TypePublication.ARTICLE);
         }
 
         @Test
@@ -154,8 +160,10 @@ class PublicationRepositoryTest {
             save(1, StatutPublication.ARCHIVED);
             save(2, StatutPublication.ACTIVE);
             List<Publication> result = repository.findByUserId(1);
-            assertThat(result).hasSize(2);
-            assertThat(result).allMatch(p -> p.getUserId().equals(1));
+            // Fixed: Joined assertions into one chain
+            assertThat(result)
+                    .hasSize(2)
+                    .allMatch(p -> p.getUserId().equals(1));
         }
 
         @Test
@@ -176,8 +184,10 @@ class PublicationRepositoryTest {
             save(1, StatutPublication.ACTIVE);
             save(2, StatutPublication.ARCHIVED);
             List<Publication> result = repository.findByUserIdAndStatut(1, StatutPublication.ARCHIVED);
-            assertThat(result).hasSize(1);
-            assertThat(result.get(0).getUserId()).isEqualTo(1);
+            // Fixed: Joined assertions into one chain
+            assertThat(result)
+                    .hasSize(1)
+                    .allMatch(p -> p.getUserId().equals(1));
         }
 
         @Test
@@ -216,7 +226,10 @@ class PublicationRepositoryTest {
         @DisplayName("saveAndFlush() génère un id")
         void savePersistsPublicationAndGeneratesId() {
             Publication p = save(1, StatutPublication.ACTIVE);
-            assertThat(p.getId()).isNotNull().isPositive();
+            // Fixed: Joined assertions into one chain
+            assertThat(p.getId())
+                    .isNotNull()
+                    .isPositive();
         }
 
         @Test

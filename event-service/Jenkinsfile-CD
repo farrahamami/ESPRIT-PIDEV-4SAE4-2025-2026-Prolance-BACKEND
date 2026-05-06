@@ -5,7 +5,9 @@ pipeline {
         DOCKER_IMAGE  = "marahmarah123/event-service"
         K8S_NAMESPACE = "devops"
         APP_NAME      = "event-service"
-        KUBECONFIG    = "/var/lib/jenkins/.kube/config"
+        HELM_REPO     = "https://github.com/MarahMhadbhi/prolance-helm-charts.git"
+        GIT_USER      = "MarahMhadbhi"
+        GIT_EMAIL     = "marah@example.com"
     }
 
     stages {
@@ -24,30 +26,31 @@ pipeline {
             }
         }
 
-        stage('Checkout K8s manifests') {
+        stage('Mettre à jour Helm chart') {
             steps {
-                git branch: 'devops/on-integrated6sur6/ads_cicd_k8s',
-                    url: 'https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND.git'
+                withCredentials([string(
+                    credentialsId: 'github-token',
+                    variable: 'GITHUB_TOKEN'
+                )]) {
+                    sh """
+                        rm -rf prolance-helm-charts
+                        git clone https://${GIT_USER}:${GITHUB_TOKEN}@github.com/MarahMhadbhi/prolance-helm-charts.git
+                        cd prolance-helm-charts
+                        git config user.email "${GIT_EMAIL}"
+                        git config user.name "${GIT_USER}"
+                        sed -i 's|tag: .*|tag: "${env.DOCKER_TAG}"|g' event-service/values.yaml
+                        git add event-service/values.yaml
+                        git commit -m "update event-service image tag to ${env.DOCKER_TAG}"
+                        git push origin main
+                    """
+                }
             }
         }
 
-        stage('Créer le namespace') {
+        stage('Vérifier déploiement ArgoCD') {
             steps {
                 sh """
-                    kubectl get namespace ${K8S_NAMESPACE} || \
-                    kubectl create namespace ${K8S_NAMESPACE}
-                """
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                sh """
-                    sed -i 's|IMAGE_TAG|${env.DOCKER_TAG}|g' event-service/k8s/deployment.yaml
-
-                    kubectl apply -f event-service/k8s/deployment.yaml -n ${K8S_NAMESPACE}
-                    kubectl apply -f event-service/k8s/service.yaml -n ${K8S_NAMESPACE}
-
+                    sleep 30
                     kubectl rollout status deployment/${APP_NAME} \
                         -n ${K8S_NAMESPACE} --timeout=300s
                 """
@@ -56,7 +59,7 @@ pipeline {
     }
 
     post {
-        success { echo 'event-service déployé ✅' }
+        success { echo 'event-service déployé via ArgoCD ✅' }
         failure { echo 'Déploiement échoué ❌' }
     }
 }

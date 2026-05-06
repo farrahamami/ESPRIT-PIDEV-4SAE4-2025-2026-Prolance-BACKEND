@@ -1,10 +1,14 @@
+com\esprit\commentaireservice\services\UnauthorizedCommentaireException.class
+com\esprit\commentaireservice\repositories\CommentaireRepository.class
+com\esprit\commentaireservice\clients\PublicationClient.class
+com\esprit\commentaireservice\controllers\CommentaireController.class
+com\esprit\commentaireservice\services\PublicationValidationException.class
+com\esprit\commentaireservice\services\CommentaireNotFoundException.class
 com\esprit\commentaireservice\entities\Commentaire.class
 com\esprit\commentaireservice\config\SecurityConfig.class
 com\esprit\commentaireservice\clients\UserClient.class
 com\esprit\commentaireservice\services\CommentaireService.class
-com\esprit\commentaireservice\repositories\CommentaireRepository.class
+com\esprit\commentaireservice\services\PublicationNotFoundException.class
 com\esprit\commentaireservice\dto\UserDTO.class
-com\esprit\commentaireservice\clients\PublicationClient.class
 com\esprit\commentaireservice\dto\PublicationDTO.class
 com\esprit\commentaireservice\CommentaireServiceApplication.class
-com\esprit\commentaireservice\controllers\CommentaireController.class

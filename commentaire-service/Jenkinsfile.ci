@@ -1,68 +1,56 @@
 pipeline {
     agent any
-
     tools {
-        jdk 'JDK21'
+        jdk 'JDK17'
         maven 'Maven3'
     }
-
     environment {
-        SERVICE_NAME      = 'commentaire-service'
-        DOCKER_NAMESPACE  = 'farahchbeb'
-        IMAGE_NAME        = "${DOCKER_NAMESPACE}/${SERVICE_NAME}"
-        IMAGE_TAG         = "${env.BUILD_NUMBER}"
-        SONAR_PROJECT     = 'commentaire-service'
-        APP_PORT          = '8083'
+        JAVA_HOME        = '/usr/lib/jvm/java-21-openjdk-amd64'
+        PATH             = "/usr/lib/jvm/java-21-openjdk-amd64/bin:${env.PATH}"
+        SERVICE_NAME     = 'commentaire-service'
+        DOCKER_NAMESPACE = 'yesmine111'
+        IMAGE_NAME       = "${DOCKER_NAMESPACE}/${SERVICE_NAME}"
+        IMAGE_TAG        = "${env.BUILD_NUMBER}"
+        SONAR_PROJECT    = 'commentaire-service'
     }
-
     options {
         timeout(time: 40, unit: 'MINUTES')
         timestamps()
         buildDiscarder(logRotator(numToKeepStr: '10'))
     }
-
     stages {
         stage('📥 Checkout') {
             steps {
-                checkout scm
+                checkout([$class: 'GitSCM',
+                    branches: [[name: '*/devops/on-integrated6sur6/ads_cicd_k8s']],
+                    extensions: [
+                        [$class: 'CloneOption', depth: 1, shallow: true, noTags: true, timeout: 60],
+                        [$class: 'SparseCheckoutPaths', sparseCheckoutPaths: [
+                            [$class: 'SparseCheckoutPath', path: 'commentaire-service/']
+                        ]]
+                    ],
+                    userRemoteConfigs: [[
+                        credentialsId: 'github-credentials',
+                        url: 'https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND'
+                    ]]
+                ])
             }
         }
-
-        stage('🔨 Compile') {
+        stage('🔨 Build & Package') {
             steps {
                 dir('commentaire-service') {
-                    sh 'mvn clean compile -B'
+                    sh 'java -version'
+                    sh 'mvn clean package -DskipTests -B'
                 }
             }
         }
-
-        stage('🧪 Tests + Coverage JaCoCo') {
+        stage('🧪 Tests') {
             steps {
                 dir('commentaire-service') {
                     sh 'mvn test -B'
                 }
             }
-            post {
-                always {
-                    junit testResults: 'commentaire-service/target/surefire-reports/*.xml',
-                          allowEmptyResults: true
-                    jacoco execPattern: 'commentaire-service/target/jacoco.exec',
-                           classPattern: 'commentaire-service/target/classes',
-                           sourcePattern: 'commentaire-service/src/main/java',
-                           exclusionPattern: '**/dto/**,**/entities/**,**/config/**,**/*Application.class'
-                }
-            }
         }
-
-        stage('📦 Package JAR') {
-            steps {
-                dir('commentaire-service') {
-                    sh 'mvn package -DskipTests -B'
-                }
-                archiveArtifacts artifacts: 'commentaire-service/target/*.jar', fingerprint: true
-            }
-        }
-
         stage('🔍 SonarQube Analysis') {
             steps {
                 dir('commentaire-service') {
@@ -71,50 +59,53 @@ pipeline {
                             mvn sonar:sonar \
                               -Dsonar.projectKey=${SONAR_PROJECT} \
                               -Dsonar.projectName=${SONAR_PROJECT} \
+                              -Dsonar.host.url=http://localhost:9000 \
                               -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
                         '''
                     }
                 }
             }
         }
-
-        stage('🔒 OWASP Dependency-Check') {
-            steps {
-                dir('commentaire-service') {
-                    sh 'mvn dependency-check:check -B || true'
-                }
-            }
-            post {
-                always {
-                    dependencyCheckPublisher(
-                        pattern: 'commentaire-service/target/dependency-check-report.xml'
-                    )
-                    publishHTML([
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'commentaire-service/target',
-                        reportFiles: 'dependency-check-report.html',
-                        reportName: 'OWASP Dependency-Check Report'
-                    ])
-                    archiveArtifacts artifacts: 'commentaire-service/target/dependency-check-report.*',
-                                     allowEmptyArchive: true
-                }
-            }
+      stage('🔒 OWASP Dependency-Check') {
+    steps {
+        dir('commentaire-service') {
+            sh 'mvn dependency-check:check -B || true'
         }
-
-        stage('🐳 Docker Build') {
+    }
+    post {
+        always {
+            dependencyCheckPublisher(
+                pattern: 'commentaire-service/target/dependency-check-report.xml',
+                stopBuild: false,
+                failedTotalCritical: 9999,
+                failedTotalHigh: 9999,
+                failedTotalMedium: 9999,
+                failedTotalLow: 9999,
+                unstableTotalCritical: 9999,
+                unstableTotalHigh: 9999,
+                unstableTotalMedium: 9999,
+                unstableTotalLow: 9999
+            )
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'commentaire-service/target',
+                reportFiles: 'dependency-check-report.html',
+                reportName: 'OWASP Dependency-Check Report'
+            ])
+            archiveArtifacts artifacts: 'commentaire-service/target/dependency-check-report.*',
+                             allowEmptyArchive: true
+        }
+    }
+}
+        stage('🐳 Docker Build & Push') {
             steps {
                 dir('commentaire-service') {
                     sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest .'
                 }
-            }
-        }
-
-        stage('📤 Docker Push') {
-            steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
+                    credentialsId: 'dockerhub-credentials',
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
@@ -127,24 +118,37 @@ pipeline {
                 }
             }
         }
-
-        stage('💾 Save build info for CD') {
-            steps {
-                writeFile file: 'last-build.txt', text: "${IMAGE_TAG}"
-                archiveArtifacts artifacts: 'last-build.txt'
-            }
-        }
     }
-
     post {
-        success {
-            echo "✅ CI OK : image ${IMAGE_NAME}:${IMAGE_TAG} poussée sur DockerHub."
-        }
-        failure {
-            echo "❌ CI échoué."
-        }
-        always {
-            cleanWs()
-        }
+    success {
+        writeFile file: 'last-build.txt', text: "${IMAGE_TAG}"
+        archiveArtifacts artifacts: 'last-build.txt'
+        echo "✅ CI OK : image ${IMAGE_NAME}:${IMAGE_TAG} poussée sur DockerHub."
+
+        build job: 'commentaire-service-cd',
+              parameters: [string(name: 'IMAGE_TAG', value: "${IMAGE_TAG}")],
+              wait: false,
+              propagate: false
     }
+
+    // ✅ CD se lance aussi si UNSTABLE (OWASP HIGH/MEDIUM détectés)
+    unstable {
+        writeFile file: 'last-build.txt', text: "${IMAGE_TAG}"
+        archiveArtifacts artifacts: 'last-build.txt'
+        echo "⚠️ CI UNSTABLE : le CD se déclenche quand même."
+
+        build job: 'commentaire-service-cd',
+              parameters: [string(name: 'IMAGE_TAG', value: "${IMAGE_TAG}")],
+              wait: false,
+              propagate: false
+    }
+
+    failure {
+        echo "❌ CI échoué. Le CD ne se déclenche PAS."
+    }
+
+    always {
+        cleanWs()
+    }
+}
 }

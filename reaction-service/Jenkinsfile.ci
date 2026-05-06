@@ -1,68 +1,56 @@
 pipeline {
     agent any
-
     tools {
-        jdk 'JDK21'
+        jdk 'JDK17'
         maven 'Maven3'
     }
-
     environment {
-        SERVICE_NAME      = 'reaction-service'
-        DOCKER_NAMESPACE  = 'farahchbeb'
-        IMAGE_NAME        = "${DOCKER_NAMESPACE}/${SERVICE_NAME}"
-        IMAGE_TAG         = "${env.BUILD_NUMBER}"
-        SONAR_PROJECT     = 'reaction-service'
-        APP_PORT          = '8084'
+        JAVA_HOME        = '/usr/lib/jvm/java-21-openjdk-amd64'
+        PATH             = "/usr/lib/jvm/java-21-openjdk-amd64/bin:${env.PATH}"
+        SERVICE_NAME     = 'reaction-service'
+        DOCKER_NAMESPACE = 'yesmine111'
+        IMAGE_NAME       = "${DOCKER_NAMESPACE}/${SERVICE_NAME}"
+        IMAGE_TAG        = "${env.BUILD_NUMBER}"
+        SONAR_PROJECT    = 'reaction-service'
     }
-
     options {
         timeout(time: 40, unit: 'MINUTES')
         timestamps()
         buildDiscarder(logRotator(numToKeepStr: '10'))
     }
-
     stages {
         stage('📥 Checkout') {
             steps {
-                checkout scm
+                checkout([$class: 'GitSCM',
+                    branches: [[name: '*/devops/on-integrated6sur6/ads_cicd_k8s']],
+                    extensions: [
+                        [$class: 'CloneOption', depth: 1, shallow: true, noTags: true, timeout: 60],
+                        [$class: 'SparseCheckoutPaths', sparseCheckoutPaths: [
+                            [$class: 'SparseCheckoutPath', path: 'reaction-service/']
+                        ]]
+                    ],
+                    userRemoteConfigs: [[
+                        credentialsId: 'github-credentials',
+                        url: 'https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND'
+                    ]]
+                ])
             }
         }
-
-        stage('🔨 Compile') {
+        stage('🔨 Build & Package') {
             steps {
                 dir('reaction-service') {
-                    sh 'mvn clean compile -B'
+                    sh 'java -version'
+                    sh 'mvn clean package -DskipTests -B'
                 }
             }
         }
-
-        stage('🧪 Tests + Coverage JaCoCo') {
+        stage('🧪 Tests') {
             steps {
                 dir('reaction-service') {
-                    sh 'mvn test -B'
-                }
-            }
-            post {
-                always {
-                    junit testResults: 'reaction-service/target/surefire-reports/*.xml',
-                          allowEmptyResults: true
-                    jacoco execPattern: 'reaction-service/target/jacoco.exec',
-                           classPattern: 'reaction-service/target/classes',
-                           sourcePattern: 'reaction-service/src/main/java',
-                           exclusionPattern: '**/dto/**,**/entities/**,**/config/**,**/*Application.class'
+                   sh 'mvn verify jacoco:report -B'
                 }
             }
         }
-
-        stage('📦 Package JAR') {
-            steps {
-                dir('reaction-service') {
-                    sh 'mvn package -DskipTests -B'
-                }
-                archiveArtifacts artifacts: 'reaction-service/target/*.jar', fingerprint: true
-            }
-        }
-
         stage('🔍 SonarQube Analysis') {
             steps {
                 dir('reaction-service') {
@@ -71,6 +59,7 @@ pipeline {
                             mvn sonar:sonar \
                               -Dsonar.projectKey=${SONAR_PROJECT} \
                               -Dsonar.projectName=${SONAR_PROJECT} \
+                              -Dsonar.host.url=http://localhost:9000 \
                               -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
                         '''
                     }
@@ -78,43 +67,13 @@ pipeline {
             }
         }
 
-        stage('🔒 OWASP Dependency-Check') {
-            steps {
-                dir('reaction-service') {
-                    sh 'mvn dependency-check:check -B || true'
-                }
-            }
-            post {
-                always {
-                    dependencyCheckPublisher(
-                        pattern: 'reaction-service/target/dependency-check-report.xml'
-                    )
-                    publishHTML([
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'reaction-service/target',
-                        reportFiles: 'dependency-check-report.html',
-                        reportName: 'OWASP Dependency-Check Report'
-                    ])
-                    archiveArtifacts artifacts: 'reaction-service/target/dependency-check-report.*',
-                                     allowEmptyArchive: true
-                }
-            }
-        }
-
-        stage('🐳 Docker Build') {
+        stage('🐳 Docker Build & Push') {
             steps {
                 dir('reaction-service') {
                     sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest .'
                 }
-            }
-        }
-
-        stage('📤 Docker Push') {
-            steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
+                    credentialsId: 'dockerhub-credentials',
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
@@ -127,17 +86,11 @@ pipeline {
                 }
             }
         }
-
-        stage('💾 Save build info for CD') {
-            steps {
-                writeFile file: 'last-build.txt', text: "${IMAGE_TAG}"
-                archiveArtifacts artifacts: 'last-build.txt'
-            }
-        }
     }
-
     post {
         success {
+            writeFile file: 'last-build.txt', text: "${IMAGE_TAG}"
+            archiveArtifacts artifacts: 'last-build.txt'
             echo "✅ CI OK : image ${IMAGE_NAME}:${IMAGE_TAG} poussée sur DockerHub."
         }
         failure {

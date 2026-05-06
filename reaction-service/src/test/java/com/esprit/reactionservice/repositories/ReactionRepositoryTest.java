@@ -14,7 +14,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-
 @DataJpaTest
 @TestPropertySource(properties = {
         "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MySQL;NON_KEYWORDS=VALUE",
@@ -41,7 +40,6 @@ class ReactionRepositoryTest {
         return repository.saveAndFlush(r);
     }
 
-
     @Nested
     @DisplayName("findByPublicationId()")
     class FindByPublicationIdTests {
@@ -51,18 +49,20 @@ class ReactionRepositoryTest {
         void returnsAllReactionsForPublication() {
             save(1, 10, TypeReaction.LIKE);
             save(2, 10, TypeReaction.DISLIKE);
-            save(3, 20, TypeReaction.HEART); // autre publication
+            save(3, 20, TypeReaction.HEART);
 
             List<Reaction> result = repository.findByPublicationId(10);
 
-            assertThat(result).hasSize(2);
-            assertThat(result).allMatch(r -> r.getPublicationId().equals(10));
+            assertThat(result)
+                    .hasSize(2)
+                    .allMatch(r -> r.getPublicationId().equals(10));
         }
 
         @Test
         @DisplayName("retourne liste vide si aucune réaction pour cette publication")
         void returnsEmptyList_whenNoReactionsForPublication() {
-            assertThat(repository.findByPublicationId(999)).isEmpty();
+            List<Reaction> result = repository.findByPublicationId(999);
+            assertThat(result).isEmpty();
         }
 
         @Test
@@ -74,12 +74,12 @@ class ReactionRepositoryTest {
 
             List<Reaction> result = repository.findByPublicationId(10);
 
-            assertThat(result).hasSize(3);
-            assertThat(result).extracting(Reaction::getType)
+            assertThat(result)
+                    .hasSize(3)
+                    .extracting(Reaction::getType)
                     .containsExactlyInAnyOrder(TypeReaction.LIKE, TypeReaction.HEART, TypeReaction.DISLIKE);
         }
     }
-
 
     @Nested
     @DisplayName("findByPublicationIdAndUserId()")
@@ -92,10 +92,13 @@ class ReactionRepositoryTest {
 
             Optional<Reaction> result = repository.findByPublicationIdAndUserId(10, 1);
 
-            assertThat(result).isPresent();
-            assertThat(result.get().getUserId()).isEqualTo(1);
-            assertThat(result.get().getPublicationId()).isEqualTo(10);
-            assertThat(result.get().getType()).isEqualTo(TypeReaction.LIKE);
+            assertThat(result)
+                    .isPresent()
+                    .hasValueSatisfying(r -> {
+                        assertThat(r.getUserId()).isEqualTo(1);
+                        assertThat(r.getPublicationId()).isEqualTo(10);
+                        assertThat(r.getType()).isEqualTo(TypeReaction.LIKE);
+                    });
         }
 
         @Test
@@ -111,7 +114,8 @@ class ReactionRepositoryTest {
         @Test
         @DisplayName("retourne Optional.empty() si la publication n'existe pas")
         void returnsEmpty_whenPublicationNotFound() {
-            assertThat(repository.findByPublicationIdAndUserId(999, 1)).isEmpty();
+            Optional<Reaction> result = repository.findByPublicationIdAndUserId(999, 1);
+            assertThat(result).isEmpty();
         }
 
         @Test
@@ -122,11 +126,11 @@ class ReactionRepositoryTest {
 
             Optional<Reaction> result = repository.findByPublicationIdAndUserId(10, 1);
 
-            assertThat(result).isPresent();
-            assertThat(result.get().getType()).isEqualTo(TypeReaction.LIKE);
+            assertThat(result)
+                    .isPresent()
+                    .hasValueSatisfying(r -> assertThat(r.getType()).isEqualTo(TypeReaction.LIKE));
         }
     }
-
 
     @Nested
     @DisplayName("countByPublicationIdAndType()")
@@ -139,7 +143,8 @@ class ReactionRepositoryTest {
             save(2, 10, TypeReaction.LIKE);
             save(3, 10, TypeReaction.DISLIKE);
 
-            assertThat(repository.countByPublicationIdAndType(10, TypeReaction.LIKE)).isEqualTo(2);
+            long likeCount = repository.countByPublicationIdAndType(10, TypeReaction.LIKE);
+            assertThat(likeCount).isEqualTo(2);
         }
 
         @Test
@@ -147,25 +152,27 @@ class ReactionRepositoryTest {
         void returnsZero_whenNoReactionOfType() {
             save(1, 10, TypeReaction.LIKE);
 
-            assertThat(repository.countByPublicationIdAndType(10, TypeReaction.HEART)).isEqualTo(0);
+            long heartCount = repository.countByPublicationIdAndType(10, TypeReaction.HEART);
+            assertThat(heartCount).isZero();
         }
 
         @Test
         @DisplayName("ignore les réactions des autres publications")
         void ignoresOtherPublications() {
             save(1, 10, TypeReaction.LIKE);
-            save(2, 20, TypeReaction.LIKE); // autre publication
+            save(2, 20, TypeReaction.LIKE);
 
-            assertThat(repository.countByPublicationIdAndType(10, TypeReaction.LIKE)).isEqualTo(1);
+            long likeCount = repository.countByPublicationIdAndType(10, TypeReaction.LIKE);
+            assertThat(likeCount).isEqualTo(1);
         }
 
         @Test
         @DisplayName("retourne 0 si la publication n'existe pas")
         void returnsZero_whenPublicationNotFound() {
-            assertThat(repository.countByPublicationIdAndType(999, TypeReaction.LIKE)).isEqualTo(0);
+            long likeCount = repository.countByPublicationIdAndType(999, TypeReaction.LIKE);
+            assertThat(likeCount).isZero();
         }
     }
-
 
     @Nested
     @DisplayName("CRUD de base")
@@ -176,7 +183,9 @@ class ReactionRepositoryTest {
         void savePersistsReactionAndGeneratesId() {
             Reaction saved = save(1, 10, TypeReaction.LIKE);
 
-            assertThat(saved.getId()).isNotNull().isPositive();
+            assertThat(saved.getId())
+                    .isNotNull()
+                    .isPositive();
         }
 
         @Test
