@@ -17,6 +17,7 @@ pipeline {
             steps {
                 retry(5) {
                     sh '''
+                        rm -rf .git
                         git init
                         git remote add origin https://github.com/farrahamami/ESPRIT-PIDEV-4SAE4-2025-2026-Prolance-BACKEND.git
                         git config core.sparseCheckout true
