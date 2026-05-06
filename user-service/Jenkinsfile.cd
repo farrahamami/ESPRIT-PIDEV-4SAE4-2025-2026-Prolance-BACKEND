@@ -6,7 +6,7 @@ pipeline {
         K8S_NAMESPACE  = 'default'
         K8S_DEPLOYMENT = 'user-service'
         K8S_CONTAINER  = 'user-service'
-        KUBECONFIG     = '/var/jenkins_home/.kube/config'
+        KUBECONFIG     = '/home/farra/.jenkins/.kube/config'
     }
 
     stages {
