@@ -6,17 +6,17 @@ pipeline {
         K8S_NAMESPACE  = 'default'
         K8S_DEPLOYMENT = 'user-service'
         K8S_CONTAINER  = 'user-service'
-        KUBECTL        = 'minikube kubectl --'
+        KUBECONFIG     = '/var/jenkins_home/.kube/config'
     }
 
     stages {
 
-        // ── 0. VERIFY MINIKUBE ────────────────────────────────────────────────
-        stage('Verify Minikube') {
+        // ── 0. VERIFY KUBECTL ─────────────────────────────────────────────────
+        stage('Verify kubectl') {
             steps {
                 sh '''
-                    minikube status
-                    minikube kubectl -- version --client
+                    kubectl version --client
+                    kubectl get nodes
                 '''
             }
         }
@@ -46,7 +46,7 @@ pipeline {
             steps {
                 echo '🔭 Ensuring Jaeger tracing backend is running...'
                 sh """
-                    minikube kubectl -- apply -f - <<'YAML'
+                    kubectl apply -f - <<'YAML'
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -104,12 +104,12 @@ YAML
             steps {
                 echo "🚀 Deploying ${DOCKER_IMAGE}:${env.DOCKER_TAG} to Minikube..."
                 sh """
-                    minikube kubectl -- set image deployment/${K8S_DEPLOYMENT} \
+                    kubectl set image deployment/${K8S_DEPLOYMENT} \
                         ${K8S_CONTAINER}=${DOCKER_IMAGE}:${env.DOCKER_TAG} \
                         --namespace=${K8S_NAMESPACE}
                 """
                 sh """
-                    minikube kubectl -- annotate deployment/${K8S_DEPLOYMENT} \
+                    kubectl annotate deployment/${K8S_DEPLOYMENT} \
                         kubernetes.io/change-cause="Jenkins CD #${BUILD_NUMBER} — image ${env.DOCKER_TAG}" \
                         --namespace=${K8S_NAMESPACE} \
                         --overwrite
@@ -122,7 +122,7 @@ YAML
             steps {
                 echo '⏳ Waiting for rollout to complete...'
                 sh """
-                    minikube kubectl -- rollout status deployment/${K8S_DEPLOYMENT} \
+                    kubectl rollout status deployment/${K8S_DEPLOYMENT} \
                         --namespace=${K8S_NAMESPACE} \
                         --timeout=120s
                 """
@@ -134,13 +134,13 @@ YAML
             steps {
                 echo '✅ Verifying pod health...'
                 sh """
-                    minikube kubectl -- get pods \
+                    kubectl get pods \
                         --namespace=${K8S_NAMESPACE} \
                         -l app=${K8S_DEPLOYMENT} \
                         -o wide
                 """
                 sh """
-                    minikube kubectl -- get deployment/${K8S_DEPLOYMENT} \
+                    kubectl get deployment/${K8S_DEPLOYMENT} \
                         --namespace=${K8S_NAMESPACE}
                 """
             }
@@ -152,11 +152,11 @@ YAML
                 echo '🪣 Verifying Bucket4j rate limiting is active...'
                 script {
                     def nodePort = sh(
-                        script: "minikube kubectl -- get svc user-service -n ${K8S_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'",
+                        script: "kubectl get svc user-service -n ${K8S_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'",
                         returnStdout: true
                     ).trim()
                     def nodeIp = sh(
-                        script: 'minikube ip',
+                        script: "kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}'",
                         returnStdout: true
                     ).trim()
                     def url = "http://${nodeIp}:${nodePort}/actuator/health"
@@ -188,14 +188,12 @@ YAML
             steps {
                 echo '🔭 Verifying Jaeger trace collector is running...'
                 sh """
-                    minikube kubectl -- wait --for=condition=available \
+                    kubectl wait --for=condition=available \
                         deployment/jaeger \
                         --namespace=${K8S_NAMESPACE} \
                         --timeout=60s
                 """
-                sh """
-                    minikube kubectl -- get pods -n ${K8S_NAMESPACE} -l app=jaeger
-                """
+                sh "kubectl get pods -n ${K8S_NAMESPACE} -l app=jaeger"
                 echo '✅ OpenTelemetry collector (Jaeger) is running and ready to receive traces'
             }
         }
@@ -204,14 +202,10 @@ YAML
     post {
         success {
             echo "✅ CD Pipeline — ${DOCKER_IMAGE}:${env.DOCKER_TAG} deployed successfully!"
-            script {
-                def minikubeIp = sh(script: 'minikube ip', returnStdout: true).trim()
-                echo "📊 Jaeger UI: http://${minikubeIp} (after port-forward: minikube kubectl -- port-forward svc/jaeger 16686:16686)"
-            }
         }
         failure {
             echo '❌ CD Pipeline failed — rolling back to previous version...'
-            sh "minikube kubectl -- rollout undo deployment/${K8S_DEPLOYMENT} --namespace=${K8S_NAMESPACE} || true"
+            sh "kubectl rollout undo deployment/${K8S_DEPLOYMENT} --namespace=${K8S_NAMESPACE} || true"
         }
         always {
             sh 'docker logout || true'
