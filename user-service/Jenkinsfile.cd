@@ -6,10 +6,29 @@ pipeline {
         K8S_NAMESPACE  = 'default'
         K8S_DEPLOYMENT = 'user-service'
         K8S_CONTAINER  = 'user-service'
-        KUBECTL        = sh(script: 'which kubectl || find /usr /snap /home -name kubectl 2>/dev/null | head -1', returnStdout: true).trim()
+        // FIX: KUBECTL ne peut pas utiliser sh() dans environment{}.
+        // On le definit ici avec une valeur par defaut, et on le
+        // recalcule dynamiquement dans le premier stage.
+        KUBECTL        = 'kubectl'
     }
 
     stages {
+
+        // ── 0. DETECT KUBECTL ─────────────────────────────────────────────────
+        // FIX: sh() n'est pas autorise dans environment{} declaratif.
+        // On detecte kubectl ici et on met a jour env.KUBECTL.
+        stage('Detect kubectl') {
+            steps {
+                script {
+                    def kubectlPath = sh(
+                        script: 'which kubectl || find /usr /snap /home -name kubectl 2>/dev/null | head -1 || echo "kubectl"',
+                        returnStdout: true
+                    ).trim()
+                    env.KUBECTL = kubectlPath
+                    echo "🔧 kubectl path: ${env.KUBECTL}"
+                }
+            }
+        }
 
         // ── 1. RECOVER BUILD TAG FROM CI ─────────────────────────────────────
         stage('Recover Docker Tag from CI') {
@@ -32,13 +51,11 @@ pipeline {
         }
 
         // ── 2. DEPLOY JAEGER (OpenTelemetry backend) ──────────────────────────
-        // Jaeger collects and visualises distributed traces from the app.
-        // We apply it with kubectl — idempotent so safe to run every build.
         stage('Deploy Jaeger (OpenTelemetry)') {
             steps {
                 echo '🔭 Ensuring Jaeger tracing backend is running...'
                 sh """
-                    ${KUBECTL} apply -f - <<'YAML'
+                    ${env.KUBECTL} apply -f - <<'YAML'
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -60,9 +77,9 @@ spec:
       - name: jaeger
         image: jaegertracing/all-in-one:1.56
         ports:
-        - containerPort: 16686   # Jaeger UI
-        - containerPort: 4317    # OTLP gRPC
-        - containerPort: 4318    # OTLP HTTP
+        - containerPort: 16686
+        - containerPort: 4317
+        - containerPort: 4318
         env:
         - name: COLLECTOR_OTLP_ENABLED
           value: "true"
@@ -96,12 +113,12 @@ YAML
             steps {
                 echo "🚀 Deploying ${DOCKER_IMAGE}:${env.DOCKER_TAG} to Kubernetes..."
                 sh """
-                    ${KUBECTL} set image deployment/${K8S_DEPLOYMENT} \
+                    ${env.KUBECTL} set image deployment/${K8S_DEPLOYMENT} \
                         ${K8S_CONTAINER}=${DOCKER_IMAGE}:${env.DOCKER_TAG} \
                         --namespace=${K8S_NAMESPACE}
                 """
                 sh """
-                    ${KUBECTL} annotate deployment/${K8S_DEPLOYMENT} \
+                    ${env.KUBECTL} annotate deployment/${K8S_DEPLOYMENT} \
                         kubernetes.io/change-cause="Jenkins CD #${BUILD_NUMBER} — image ${env.DOCKER_TAG}" \
                         --namespace=${K8S_NAMESPACE} \
                         --overwrite
@@ -114,7 +131,7 @@ YAML
             steps {
                 echo '⏳ Waiting for rollout to complete...'
                 sh """
-                    ${KUBECTL} rollout status deployment/${K8S_DEPLOYMENT} \
+                    ${env.KUBECTL} rollout status deployment/${K8S_DEPLOYMENT} \
                         --namespace=${K8S_NAMESPACE} \
                         --timeout=120s
                 """
@@ -126,31 +143,29 @@ YAML
             steps {
                 echo '✅ Verifying pod health...'
                 sh """
-                    ${KUBECTL} get pods \
+                    ${env.KUBECTL} get pods \
                         --namespace=${K8S_NAMESPACE} \
                         -l app=${K8S_DEPLOYMENT} \
                         -o wide
                 """
                 sh """
-                    ${KUBECTL} get deployment/${K8S_DEPLOYMENT} \
+                    ${env.KUBECTL} get deployment/${K8S_DEPLOYMENT} \
                         --namespace=${K8S_NAMESPACE}
                 """
             }
         }
 
         // ── 6. VERIFY RATE LIMITING (Bucket4j) ───────────────────────────────
-        // Fires 25 rapid requests at the health endpoint and confirms that
-        // at least one is rejected with HTTP 429 — proving Bucket4j is active.
         stage('Verify Rate Limiting (Bucket4j)') {
             steps {
                 echo '🪣 Verifying Bucket4j rate limiting is active...'
                 script {
                     def nodePort = sh(
-                        script: "${KUBECTL} get svc user-service -n ${K8S_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'",
+                        script: "${env.KUBECTL} get svc user-service -n ${K8S_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'",
                         returnStdout: true
                     ).trim()
                     def nodeIp = sh(
-                        script: "${KUBECTL} get nodes -o jsonpath='{.items[0].status.addresses[0].address}'",
+                        script: "${env.KUBECTL} get nodes -o jsonpath='{.items[0].status.addresses[0].address}'",
                         returnStdout: true
                     ).trim()
                     def url = "http://${nodeIp}:${nodePort}/actuator/health"
@@ -178,18 +193,17 @@ YAML
         }
 
         // ── 7. VERIFY OPENTELEMETRY TRACES ────────────────────────────────────
-        // Checks that the Jaeger backend is up and reachable inside the cluster.
         stage('Verify OpenTelemetry (Jaeger)') {
             steps {
                 echo '🔭 Verifying Jaeger trace collector is running...'
                 sh """
-                    ${KUBECTL} wait --for=condition=available \
+                    ${env.KUBECTL} wait --for=condition=available \
                         deployment/jaeger \
                         --namespace=${K8S_NAMESPACE} \
                         --timeout=60s
                 """
                 sh """
-                    ${KUBECTL} get pods -n ${K8S_NAMESPACE} -l app=jaeger
+                    ${env.KUBECTL} get pods -n ${K8S_NAMESPACE} -l app=jaeger
                 """
                 echo '✅ OpenTelemetry collector (Jaeger) is running and ready to receive traces'
             }
@@ -203,7 +217,7 @@ YAML
         }
         failure {
             echo '❌ CD Pipeline failed — rolling back to previous version...'
-            sh "${KUBECTL} rollout undo deployment/${K8S_DEPLOYMENT} --namespace=${K8S_NAMESPACE} || true"
+            sh "${env.KUBECTL} rollout undo deployment/${K8S_DEPLOYMENT} --namespace=${K8S_NAMESPACE} || true"
         }
         always {
             sh 'docker logout || true'
